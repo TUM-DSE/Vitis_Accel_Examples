@@ -83,7 +83,7 @@ __kernel void fir_shift_register(__global int* restrict output_r,
                                  int signal_length) {
     int coeff_reg[N_COEFF];
     
-    int shift_reg[N_COEFF]; // Maybe need to do an optimization equivalent to xcl_array_partition
+    int shift_reg[N_COEFF]; // ToDo (Maybe): Need to do an optimization equivalent to xcl_array_partition?
 
     for (int i = 0; i < N_COEFF; i++) {
         shift_reg[i] = 0;
