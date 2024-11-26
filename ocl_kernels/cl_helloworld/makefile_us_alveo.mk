@@ -51,7 +51,7 @@ BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
 LINK_OUTPUT := $(BUILD_DIR)/vector_addition.link.xclbin
 PACKAGE_OUT = ./package.$(TARGET)
 
-VPP_PFLAGS := 
+VPP_PFLAGS :=
 CMD_ARGS = $(BUILD_DIR)/vector_addition.xclbin
 CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++1y
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
@@ -69,6 +69,7 @@ LDFLAGS += -lrt -lstdc++
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
 VPP_FLAGS += --save-temps 
+VPP_LDFLAGS_vector_add += --config ./link.cfg
 
 
 EXECUTABLE = ./cl_helloworld
@@ -90,11 +91,11 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/vector_add.xo: src/vector_addition.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k vector_add --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k vector_add --freqhz=300000000:vector_add --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/vector_addition.xclbin: $(TEMP_DIR)/vector_add.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=300000000:vector_add_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_vector_add) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/vector_addition.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

@@ -69,6 +69,7 @@ LDFLAGS += -lrt -lstdc++
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
 VPP_FLAGS += --save-temps 
+VPP_LDFLAGS_mmult += --config ./link.cfg
 
 
 EXECUTABLE = ./cl_loop_reorder
@@ -90,11 +91,11 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/mmult.xo: src/mmult.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k mmult --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k mmult --freqhz=300000000:mmult --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/mmult.xclbin: $(TEMP_DIR)/mmult.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=300000000:mmult_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_mmult) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/mmult.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

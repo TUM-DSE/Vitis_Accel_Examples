@@ -71,6 +71,7 @@ LDFLAGS += -lrt -lstdc++
 # Kernel compiler global settings
 VPP_FLAGS += --save-temps 
 VPP_FLAGS_vadd +=  --config ./vadd_vadd.cfg
+VPP_LDFLAGS_vadd += --config ./link.cfg
 
 
 EXECUTABLE = ./cl_burst_rw
@@ -92,11 +93,11 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/vadd.xo: src/vadd.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) $(VPP_FLAGS_vadd) -k vadd --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) $(VPP_FLAGS_vadd) -k vadd --freqhz=300000000:vadd --clock.tolerance=0.10:vadd --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/vadd.xclbin: $(TEMP_DIR)/vadd.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=300000000:vadd_1 --clock.tolerance=0.10:vadd_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_vadd) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/vadd.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

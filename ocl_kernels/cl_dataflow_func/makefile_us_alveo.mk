@@ -70,6 +70,7 @@ LDFLAGS += -lrt -lstdc++
 # Kernel compiler global settings
 VPP_FLAGS += --save-temps 
 VPP_FLAGS_adder +=  --config ./adder_adder.cfg
+VPP_LDFLAGS_adder += --config ./link.cfg
 
 
 EXECUTABLE = ./cl_dataflow_func
@@ -91,11 +92,11 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/adder.xo: src/adder.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) $(VPP_FLAGS_adder) -k adder --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) $(VPP_FLAGS_adder) -k adder --freqhz=300000000:adder --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/adder.xclbin: $(TEMP_DIR)/adder.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=300000000:adder_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_adder) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/adder.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

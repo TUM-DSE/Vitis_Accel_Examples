@@ -69,7 +69,7 @@ LDFLAGS += -lrt -lstdc++
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
 VPP_FLAGS += --save-temps 
-
+VPP_LDFLAGS_matmul += --config ./link.cfg
 
 EXECUTABLE = ./cl_array_partition
 EMCONFIG_DIR = $(TEMP_DIR)
@@ -90,14 +90,14 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/matmul.xo: src/matmul.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k matmul --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k matmul --freqhz=300000000:matmul --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 $(TEMP_DIR)/matmul_partition.xo: src/matmul.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k matmul_partition --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k matmul_partition --freqhz=300000000:matmul_partition --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/matmul.xclbin: $(TEMP_DIR)/matmul.xo $(TEMP_DIR)/matmul_partition.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=300000000:matmul_1,matmul_partition_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_matmul) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/matmul.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
