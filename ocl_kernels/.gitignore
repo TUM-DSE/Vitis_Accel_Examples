@@ -1,0 +1,26 @@
+# Executables
+cl_array_partition/cl_array_partition
+cl_burst_rw/cl_burst_rw
+cl_dataflow_func/cl_dataflow_func
+cl_dataflow_subfunc/cl_dataflow_subfunc
+cl_gmem_2banks/cl_gmem_2banks
+cl_helloworld/cl_helloworld
+cl_lmem_2rw/cl_lmem_2rw
+cl_loop_reorder/cl_loop_reorder
+cl_partition_cyclicblock/cl_partition_cyclicblock
+cl_shift_register/cl_shift_register
+cl_systolic_array/cl_systolic_array
+cl_wide_mem_rw/cl_wide_mem_rw
+# Directories created by Intel compiler
+cl_array_partition/array_partition
+cl_burst_rw/burst_rw
+cl_dataflow_func/dataflow_func
+cl_dataflow_subfunc/dataflow_subfunc
+cl_gmem_2banks/gmem_2banks
+cl_helloworld/helloworld
+cl_lmem_2rw/lmem_2rw
+cl_loop_reorder/loop_reorder
+cl_partition_cyclicblock/partition_cyclicblock
+cl_shift_register/shift_register
+cl_systolic_array/systolic_array
+cl_wide_mem_rw/wide_mem_rw
