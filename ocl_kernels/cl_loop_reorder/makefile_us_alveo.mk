@@ -75,7 +75,7 @@ VPP_LDFLAGS_mmult += --config ./link.cfg
 EXECUTABLE = ./cl_loop_reorder
 EMCONFIG_DIR = $(TEMP_DIR)
 
-FREQ := 300000000
+FREQ := 0:650
 
 ############################## Setting Targets ##############################
 .PHONY: all clean cleanall docs emconfig
@@ -97,7 +97,8 @@ $(TEMP_DIR)/mmult.xo: src/mmult.cl
 
 $(BUILD_DIR)/mmult.xclbin: $(TEMP_DIR)/mmult.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):mmult_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_mmult) -o'$(LINK_OUTPUT)' $(+)
+#	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):mmult_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_mmult) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/mmult.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

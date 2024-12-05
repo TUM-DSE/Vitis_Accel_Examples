@@ -75,7 +75,7 @@ VPP_LDFLAGS_vadd += --config ./link.cfg
 EXECUTABLE = ./cl_wide_mem_rw
 EMCONFIG_DIR = $(TEMP_DIR)
 
-FREQ := 300000000
+FREQ := 0:650
 
 ############################## Setting Targets ##############################
 .PHONY: all clean cleanall docs emconfig
@@ -97,7 +97,8 @@ $(TEMP_DIR)/vadd.xo: src/vadd.cl
 
 $(BUILD_DIR)/vadd.xclbin: $(TEMP_DIR)/vadd.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):vadd_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_vadd) -o'$(LINK_OUTPUT)' $(+)
+#	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):vadd_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_vadd) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/vadd.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

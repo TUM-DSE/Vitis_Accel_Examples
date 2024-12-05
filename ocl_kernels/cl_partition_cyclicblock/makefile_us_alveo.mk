@@ -75,7 +75,7 @@ VPP_LDFLAGS_matmul += --config ./link.cfg
 EXECUTABLE = ./cl_partition_cyclicblock
 EMCONFIG_DIR = $(TEMP_DIR)
 
-FREQ := 300000000
+FREQ := 0:650
 
 ############################## Setting Targets ##############################
 .PHONY: all clean cleanall docs emconfig
@@ -100,7 +100,8 @@ $(TEMP_DIR)/matmul_partition.xo: src/matmul.cl
 
 $(BUILD_DIR)/matmul.xclbin: $(TEMP_DIR)/matmul_naive.xo $(TEMP_DIR)/matmul_partition.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):matmul_naive_1,matmul_partition_1 --vivado.prop run.impl_1.strategy=Performance_Explore --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_matmul) -o'$(LINK_OUTPUT)' $(+)
+#	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):matmul_naive_1,matmul_partition_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_matmul) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --vivado.prop run.impl_1.strategy=Congestion_SpreadLogic_medium --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/matmul.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
