@@ -15,7 +15,7 @@
 */
 
 // Maximum Array Size
-#define MAX_SIZE 16
+#define MAX_SIZE 2048 // Total data size = columns * rows * sizeof(int) * 2 = 32 MB
 
 __kernel void matmul(
     const __global int* in1,

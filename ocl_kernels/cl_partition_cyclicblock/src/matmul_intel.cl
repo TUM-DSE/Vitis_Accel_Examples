@@ -14,7 +14,7 @@
 * under the License.
 */
 
-#define MAX_DIM 64
+#define MAX_DIM 2048 // Total data size = columns * rows * sizeof(int) * 2 = 32 MB
 
 constant int c_size = MAX_DIM;
 
