@@ -42,7 +42,14 @@ endif
 
 ############################## Setting up Project Variables ##############################
 TARGET := hw
-VPP_LDFLAGS :=
+
+MEMORY := hbm
+ifeq ($(MEMORY), ddr)
+	VPP_LDFLAGS := --config ./ddr.cfg
+else
+	VPP_LDFLAGS := --config ./hbm.cfg
+endif
+
 include ./utils.mk
 
 TEMP_DIR := ./_x.$(TARGET).$(XSA)
@@ -100,8 +107,8 @@ $(TEMP_DIR)/matmul_partition.xo: src/matmul.cl
 
 $(BUILD_DIR)/matmul.xclbin: $(TEMP_DIR)/matmul_naive.xo $(TEMP_DIR)/matmul_partition.xo
 	mkdir -p $(BUILD_DIR)
-#	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):matmul_naive_1,matmul_partition_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_matmul) -o'$(LINK_OUTPUT)' $(+)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --vivado.prop run.impl_1.strategy=Congestion_SpreadLogic_medium --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+#	--vivado.impl.strategies "Performance_Explore,Performance_EarlyBlockPlacement,Performance_Retiming,Congestion_SpreadLogic_high,Area_ExploreWithRemap"
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/matmul.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

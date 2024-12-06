@@ -42,7 +42,14 @@ endif
 
 ############################## Setting up Project Variables ##############################
 TARGET := hw
-VPP_LDFLAGS :=
+
+MEMORY := hbm
+ifeq ($(MEMORY), ddr)
+	VPP_LDFLAGS := --config ./ddr.cfg
+else
+	VPP_LDFLAGS := --config ./hbm.cfg
+endif
+
 include ./utils.mk
 
 TEMP_DIR := ./_x.$(TARGET).$(XSA)
@@ -69,8 +76,6 @@ LDFLAGS += -lrt -lstdc++
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
 VPP_FLAGS += --save-temps 
-VPP_LDFLAGS_fir += --config ./link.cfg
-
 
 EXECUTABLE = ./cl_shift_register
 EMCONFIG_DIR = $(TEMP_DIR)
@@ -100,7 +105,6 @@ $(TEMP_DIR)/fir_shift_register.xo: src/fir.cl
 
 $(BUILD_DIR)/fir.xclbin: $(TEMP_DIR)/fir_naive.xo $(TEMP_DIR)/fir_shift_register.xo
 	mkdir -p $(BUILD_DIR)
-#	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --freqhz=$(FREQ):fir_naive_1,fir_shift_register_1 --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_fir) -o'$(LINK_OUTPUT)' $(+)
 	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/fir.xclbin
 

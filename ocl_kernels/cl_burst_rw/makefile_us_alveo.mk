@@ -42,7 +42,14 @@ endif
 
 ############################## Setting up Project Variables ##############################
 TARGET := hw
-VPP_LDFLAGS :=
+
+MEMORY := hbm
+ifeq ($(MEMORY), ddr)
+	VPP_LDFLAGS := --config ./ddr.cfg
+else
+	VPP_LDFLAGS := --config ./hbm.cfg
+endif
+
 include ./utils.mk
 
 TEMP_DIR := ./_x.$(TARGET).$(XSA)
@@ -71,8 +78,6 @@ LDFLAGS += -lrt -lstdc++
 # Kernel compiler global settings
 VPP_FLAGS += --save-temps 
 VPP_FLAGS_vadd +=  --config ./vadd_vadd.cfg
-VPP_LDFLAGS_vadd += --config ./link.cfg
-
 
 EXECUTABLE = ./cl_burst_rw
 EMCONFIG_DIR = $(TEMP_DIR)
