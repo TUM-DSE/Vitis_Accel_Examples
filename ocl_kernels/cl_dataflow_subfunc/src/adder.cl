@@ -57,8 +57,8 @@ APIs
 
 
 *******************************************************************************/
-#define DATA_SIZE (8 * 1024 * 1024) // * sizeof(int) = 32 MB
-#define BUFFER_SIZE (8 * 1024 * 1024)
+#define DATA_SIZE (128 * 1024) // * sizeof(int) = 512 KB
+#define BUFFER_SIZE (128 * 1024)
 
 // Tripcount identifiers
 __constant int c_size = DATA_SIZE;
