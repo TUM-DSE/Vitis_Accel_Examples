@@ -29,7 +29,7 @@
 #include <string>
 #include <vector>
 
-#define SIGNAL_SIZE (1024 * 1024)
+#define SIGNAL_SIZE (128 * 1024) // * sizeof(int) = 512 KB
 #define SIGNAL_SIZE_IN_EMU 1024
 
 using std::default_random_engine;
@@ -122,20 +122,37 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = fir_naive_kernel.setArg(2, buffer_coeff_A));
     OCL_CHECK(err, err = fir_naive_kernel.setArg(3, signal_size));
 
-    // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_signal_A, buffer_coeff_A}, 0 /* 0 means from host*/));
-
-    cl::Event event;
+    cl::Event event_kernel;
+    cl::Event event_data_to_fpga;
+    cl::Event event_data_to_host;
     int iterations = xcl::is_emulation() ? 2 : 100;
-    uint64_t fir_naive_time = 0;
+    uint64_t nstimestart = 0;
+    uint64_t nstimeend = 0;
+    uint64_t nstime_kernel = 0;
+    uint64_t nstime_data_to_fpga = 0;
+    uint64_t nstime_data_to_host = 0;
+
     // Running naive kernel iterations times
-    for (int i = 0; i < iterations; i++) {
-        OCL_CHECK(err, err = q.enqueueTask(fir_naive_kernel, nullptr, &event));
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output_A}, CL_MIGRATE_MEM_OBJECT_HOST));
+    for (int i = 0; i < iterations / 2; i++) {
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_signal_A, buffer_coeff_A}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueTask(fir_naive_kernel, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output_A}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
         q.finish();
-        fir_naive_time += get_duration_ns(event);
-        verify(gold, out);
+
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_kernel += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_host += nstimeend - nstimestart;
     }
+
+    verify(gold, out);
 
     // Creating FIR Shift Register Kernel object and setting args
     OCL_CHECK(err, cl::Kernel fir_sr_kernel(program, "fir_shift_register", &err));
@@ -145,17 +162,39 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = fir_sr_kernel.setArg(2, buffer_coeff_B));
     OCL_CHECK(err, err = fir_sr_kernel.setArg(3, signal_size));
 
-    uint64_t fir_sr_time = 0;
     // Running Shift Register FIR iterations times
-    for (int i = 0; i < iterations; i++) {
-        OCL_CHECK(err, err = q.enqueueTask(fir_sr_kernel, nullptr, &event));
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output_B}, CL_MIGRATE_MEM_OBJECT_HOST));
+    for (int i = 0; i < iterations / 2; i++) {
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_signal_B, buffer_coeff_B}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueTask(fir_sr_kernel, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output_B}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
         q.finish();
-        fir_sr_time += get_duration_ns(event);
-        verify(gold, out);
+
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_kernel += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_host += nstimeend - nstimestart;
     }
+
+    verify(gold, out);
+
     printf("Example Testdata Signal_Length=%u for %d iteration\n", signal_size, iterations);
-    print_summary("fir_naive", "fir_shift_register", fir_naive_time, fir_sr_time, iterations);
+    // print_summary("fir_naive", "fir_shift_register", fir_naive_time, fir_sr_time, iterations);
+
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "cl_shift_register,"
+              << size_in_bytes + coeff_size_in_bytes << ","
+              << iterations << ","
+              << nstime_data_to_fpga / iterations << ","
+              << nstime_kernel / iterations << ","
+              << nstime_data_to_host / iterations << "\n";
+
     printf("TEST PASSED\n");
     return EXIT_SUCCESS;
 }

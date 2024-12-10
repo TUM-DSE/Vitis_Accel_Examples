@@ -20,7 +20,7 @@ Description: Vitis Vector Addition to utilize both Ports of BRAM memory
 #include "xcl2.hpp"
 #include <vector>
 
-#define DATA_SIZE 4096
+#define DATA_SIZE (64 * 1024) // * 2 * sizeof(int) = 512 KB
 
 int main(int argc, char** argv) {
     if (argc != 2) {
@@ -94,15 +94,44 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = krnl_vector_add.setArg(2, buffer_output));
     OCL_CHECK(err, err = krnl_vector_add.setArg(3, size));
 
-    // Copy input data to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/));
+    cl::Event event_kernel;
+    cl::Event event_data_to_fpga;
+    cl::Event event_data_to_host;
+    const int iterations = 1000;
+    uint64_t nstimestart = 0;
+    uint64_t nstimeend = 0;
+    uint64_t nstime_kernel = 0;
+    uint64_t nstime_data_to_fpga = 0;
+    uint64_t nstime_data_to_host = 0;
 
-    // Launch the Kernel
-    OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add));
+    for (int i = 0; i < iterations; i++) {
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        q.finish();
 
-    // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST));
-    q.finish();
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_kernel += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_host += nstimeend - nstimestart;
+    }
+    // OPENCL HOST CODE AREA END
+
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "cl_lmem_2rw,"
+              << vector_size_bytes * 2 << ","
+              << iterations << ","
+              << nstime_data_to_fpga / iterations << ","
+              << nstime_kernel / iterations << ","
+              << nstime_data_to_host / iterations << "\n";
+
     // OPENCL HOST CODE AREA END
 
     // Compare the results of the Device to the simulation

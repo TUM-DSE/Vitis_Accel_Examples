@@ -18,7 +18,7 @@
 
 using std::vector;
 
-static const int DATA_SIZE = 1024;
+static const int DATA_SIZE = 64 * 1024; // * 2 * sizeof(int) = 512 KB
 static const std::string error_message =
     "Error: Result mismatch:\n"
     "i = %d CPU result = %d Device result = %d\n";
@@ -95,20 +95,50 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = krnl_vector_add.setArg(narg++, buffer_b));
     OCL_CHECK(err, err = krnl_vector_add.setArg(narg++, DATA_SIZE));
 
-    // These commands will load the source_a and source_b vectors from the host
-    // application and into the buffer_a and buffer_b cl::Buffer objects. The data
-    // will be be transferred from system memory over PCIe to the FPGA on-board
-    // DDR memory.
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_a, buffer_b}, 0 /* 0 means from host*/));
+    cl::Event event_kernel;
+    cl::Event event_data_to_fpga;
+    cl::Event event_data_to_host;
+    const int iterations = 1000;
+    uint64_t nstimestart = 0;
+    uint64_t nstimeend = 0;
+    uint64_t nstime_kernel = 0;
+    uint64_t nstime_data_to_fpga = 0;
+    uint64_t nstime_data_to_host = 0;
 
-    // Launch the Kernel
-    OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add));
+    for (int i = 0; i < iterations; i++) {
+        // These commands will load the source_a and source_b vectors from the host
+        // application and into the buffer_a and buffer_b cl::Buffer objects. The data
+        // will be be transferred from system memory over PCIe to the FPGA on-board
+        // DDR memory.
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_a, buffer_b}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        // Launch the Kernel
+        OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
+        // The result of the previous kernel execution will need to be retrieved in
+        // order to view the results. This call will write the data from the
+        // buffer_result cl_mem object to the source_results vector
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_result}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        q.finish();
 
-    // The result of the previous kernel execution will need to be retrieved in
-    // order to view the results. This call will write the data from the
-    // buffer_result cl_mem object to the source_results vector
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_result}, CL_MIGRATE_MEM_OBJECT_HOST));
-    q.finish();
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_kernel += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_host += nstimeend - nstimestart;
+    }
+
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "cl_helloworld,"
+              << size_in_bytes * 2
+              << "," << iterations << ","
+              << nstime_data_to_fpga / iterations << ","
+              << nstime_kernel / iterations << ","
+              << nstime_data_to_host / iterations << "\n";
 
     int match = 0;
     printf("Result = \n");
@@ -119,8 +149,8 @@ int main(int argc, char** argv) {
             match = 1;
             break;
         } else {
-            printf("%d ", source_results[i]);
-            if (((i + 1) % 16) == 0) printf("\n");
+            // printf("%d ", source_results[i]);
+            // if (((i + 1) % 16) == 0) printf("\n");
         }
     }
 
