@@ -77,6 +77,8 @@ VPP_LDFLAGS_krnl_vadd += --config ./krnl_vadd.cfg
 EXECUTABLE = ./hbm_simple
 EMCONFIG_DIR = $(TEMP_DIR)
 
+FREQ := 0:300
+
 ############################## Setting Targets ##############################
 .PHONY: all clean cleanall docs emconfig
 all: check-platform check-device check-vitis $(EXECUTABLE) $(BUILD_DIR)/krnl_vadd.xclbin emconfig
@@ -97,7 +99,7 @@ $(TEMP_DIR)/krnl_vadd.xo: src/krnl_vadd.cpp
 
 $(BUILD_DIR)/krnl_vadd.xclbin: $(TEMP_DIR)/krnl_vadd.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_krnl_vadd) -o'$(LINK_OUTPUT)' $(+)
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_krnl_vadd) -o'$(LINK_OUTPUT)' $(+)
 	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/krnl_vadd.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################

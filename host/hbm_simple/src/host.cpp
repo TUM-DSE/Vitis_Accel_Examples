@@ -110,7 +110,7 @@ bool verify(std::vector<int, aligned_allocator<int> >& source_sw_results,
     return check;
 }
 
-double run_krnl(cl::Context& context,
+std::vector<double> run_krnl(cl::Context& context,
                 cl::CommandQueue& q,
                 cl::Kernel& kernel,
                 std::vector<int, aligned_allocator<int> >& source_in1,
@@ -119,6 +119,7 @@ double run_krnl(cl::Context& context,
                 int* pc_assign,
                 unsigned int size) {
     cl_int err;
+    auto times = std::vector<double>{};
 
     // For Allocating Buffer to specific Global Memory PC, user has to use
     // cl_mem_ext_ptr_t
@@ -153,24 +154,36 @@ double run_krnl(cl::Context& context,
     OCL_CHECK(err, err = (kernel).setArg(2, buffer_output));
     OCL_CHECK(err, err = (kernel).setArg(3, size));
 
+    std::chrono::duration<double> data_to_fpga_time(0);
+    auto data_to_fpga_start = std::chrono::high_resolution_clock::now();
     // Copy input data to Device Global Memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_input1, buffer_input2}, 0 /* 0 means from host*/));
     q.finish();
+    auto data_to_fpga_end = std::chrono::high_resolution_clock::now();
+
+    data_to_fpga_time = std::chrono::duration<double>(data_to_fpga_end - data_to_fpga_start);
+    times.push_back(data_to_fpga_time.count());
 
     std::chrono::duration<double> kernel_time(0);
-
     auto kernel_start = std::chrono::high_resolution_clock::now();
     OCL_CHECK(err, err = q.enqueueTask(kernel));
     q.finish();
     auto kernel_end = std::chrono::high_resolution_clock::now();
 
     kernel_time = std::chrono::duration<double>(kernel_end - kernel_start);
+    times.push_back(kernel_time.count());
 
+    std::chrono::duration<double> data_to_host_time(0);
+    auto data_to_host_start = std::chrono::high_resolution_clock::now();
     // Copy Result from Device Global Memory to Host Local Memory
     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST));
     q.finish();
+    auto data_to_host_end = std::chrono::high_resolution_clock::now();
 
-    return kernel_time.count();
+    data_to_host_time = std::chrono::duration<double>(data_to_host_end - data_to_host_start);
+    times.push_back(data_to_host_time.count());
+
+    return times;
 }
 
 int main(int argc, char* argv[]) {
@@ -232,7 +245,7 @@ int main(int argc, char* argv[]) {
         source_hw_results[i] = 0;
     }
 
-    double kernel_time_in_sec = 0, result = 0;
+    double result_kernel = 0, result_data_to_fpga = 0, result_data_to_host = 0;
     bool match = true;
     const int numBuf = 3; // Since three buffers are being used
     int pc_assign[numBuf];
@@ -247,16 +260,24 @@ int main(int argc, char* argv[]) {
         pc_assign[j] = pc[0];
     }
 
-    kernel_time_in_sec =
+    auto times_single_pc =
         run_krnl(context, q, kernel_vadd, source_in1, source_in2, source_hw_results, pc_assign, dataSize);
     match = verify(source_sw_results, source_hw_results, dataSize);
 
     // Multiplying the actual data size by 3 because three buffers are being used.
-    result = 3 * dataSize * sizeof(uint32_t);
-    result /= (1000 * 1000 * 1000); // to GB
-    result /= kernel_time_in_sec;   // to GBps
+    result_kernel = 3 * dataSize * sizeof(uint32_t);
+    result_kernel /= (1000 * 1000 * 1000); // to GB
+    result_data_to_fpga = 2 * dataSize * sizeof(uint32_t); // 2 buffers as input
+    result_data_to_fpga /= (1000 * 1000 * 1000); // to GB
+    result_data_to_host = dataSize * sizeof(uint32_t); // 1 buffer as output
+    result_data_to_host /= (1000 * 1000 * 1000); // to GB
+    result_data_to_fpga /= times_single_pc[0];
+    result_data_to_host /= times_single_pc[2];
+    result_kernel /= times_single_pc[1];   // to GBps
 
-    std::cout << "[CASE 1] THROUGHPUT = " << result << " GB/s" << std::endl;
+    std::cout << "[CASE 1]       THROUGHPUT KERNEL = " << result_kernel << " GB/s" << std::endl;
+    std::cout << "         THROUGHPUT DATA TO FPGA = " << result_data_to_fpga << " GB/s" << std::endl;
+    std::cout << "         THROUGHPUT DATA TO HOST = " << result_data_to_host << " GB/s" << std::endl;
 
     std::cout << "Running CASE 2: Three Separate PCs for Three Buffers" << std::endl;
 
@@ -268,15 +289,23 @@ int main(int argc, char* argv[]) {
         pc_assign[j] = pc[j + 1];
     }
 
-    kernel_time_in_sec =
+    auto times_multi_pc =
         run_krnl(context, q, kernel_vadd, source_in1, source_in2, source_hw_results, pc_assign, dataSize);
     match = verify(source_sw_results, source_hw_results, dataSize);
 
-    result = 3 * dataSize * sizeof(uint32_t);
-    result /= (1000 * 1000 * 1000); // to GB
-    result /= kernel_time_in_sec;   // to GBps
+    result_kernel = 3 * dataSize * sizeof(uint32_t);
+    result_kernel /= (1000 * 1000 * 1000); // to GB
+    result_data_to_fpga = 2 * dataSize * sizeof(uint32_t); // 2 buffers as input
+    result_data_to_fpga /= (1000 * 1000 * 1000); // to GB
+    result_data_to_host = dataSize * sizeof(uint32_t); // 1 buffer as output
+    result_data_to_host /= (1000 * 1000 * 1000); // to GB
+    result_data_to_fpga /= times_multi_pc[0];
+    result_data_to_host /= times_multi_pc[2];
+    result_kernel /= times_multi_pc[1];   // to GBps
 
-    std::cout << "[CASE 2] THROUGHPUT = " << result << " GB/s " << std::endl;
+    std::cout << "[CASE 2]       THROUGHPUT KERNEL = " << result_kernel << " GB/s " << std::endl;
+    std::cout << "         THROUGHPUT DATA TO FPGA = " << result_data_to_fpga << " GB/s" << std::endl;
+    std::cout << "         THROUGHPUT DATA TO HOST = " << result_data_to_host << " GB/s" << std::endl;
 
     std::cout << (match ? "TEST PASSED" : "TEST FAILED") << std::endl;
     return (match ? EXIT_SUCCESS : EXIT_FAILURE);
