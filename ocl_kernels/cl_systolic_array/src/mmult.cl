@@ -51,7 +51,7 @@ Kernel Description :
 */
 
 // Maximum Array Size
-#define MAX_SIZE 128 // Total data size = columns * rows * sizeof(int) * 2 = 128 KB
+#define MAX_SIZE 24
 
 // Tripcount identifiers
 __constant int c_size = MAX_SIZE;
