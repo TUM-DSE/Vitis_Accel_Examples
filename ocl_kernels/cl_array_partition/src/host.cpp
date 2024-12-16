@@ -75,8 +75,8 @@ int main(int argc, char** argv) {
     }
 
     std::string binaryFile = argv[1];
-    static const int columns = 16;
-    static const int rows = 16;
+    static const int columns = 64;
+    static const int rows = 64;
     cl_int err;
     cl::Program program;
     cl::CommandQueue q;

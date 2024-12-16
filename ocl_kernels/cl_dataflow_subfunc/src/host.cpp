@@ -17,7 +17,7 @@
 #include "xcl2.hpp"
 #include <vector>
 
-#define DATA_SIZE 4096
+#define DATA_SIZE (128 * 1024) // * sizeof(int) = 512 KB
 #define INCR_VALUE 10
 
 int main(int argc, char** argv) {

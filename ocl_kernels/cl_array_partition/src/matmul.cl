@@ -15,7 +15,7 @@
 */
 
 // Maximum Array Size
-#define MAX_SIZE 256 // Total data size = columns * rows * sizeof(int) * 2 = 512 KB
+#define MAX_SIZE 64 // Total data size = columns * rows * sizeof(int) * 2 = 32 KB
 
 // Tripcount identifiers
 __constant int c_size = MAX_SIZE;

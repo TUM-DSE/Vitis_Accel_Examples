@@ -15,7 +15,7 @@
 */
 
 // Maximum Matrix Dimension Supported by Kernel
-#define MAX_DIM 256 // Total data size = columns * rows * sizeof(int) * 2 = 512 KB
+#define MAX_DIM 64 // Total data size = columns * rows * sizeof(int) * 2 = 32 KB
 
 // Tripcount identifiers
 __constant int c_size = MAX_DIM;

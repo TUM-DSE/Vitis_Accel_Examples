@@ -28,10 +28,10 @@ performance.
 #include <vector>
 
 // Array Size to access
-#define DATA_SIZE 16
+#define DATA_SIZE 64
 
 // Maximum Array Size
-#define MAX_SIZE 32
+#define MAX_SIZE 64
 
 // Software implementation of Matrix Multiplication
 // The inputs are of the size (DATA_SIZE x DATA_SIZE)
