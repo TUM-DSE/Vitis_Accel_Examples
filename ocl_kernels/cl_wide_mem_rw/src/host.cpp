@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
               << nstime_kernel / iterations << ","
               << nstime_data_to_host / iterations << "\n";
 
-    std::cout << "kernel_time_cpuclock," << kernel_time / iterations << "," << std::endl;
+    std::cout << "kernel_time_cpuclock," << kernel_time.count() / iterations << "," << std::endl;
 
     // OPENCL HOST CODE AREA END
 
