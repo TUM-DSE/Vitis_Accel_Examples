@@ -56,26 +56,27 @@ kernel __attribute__((reqd_work_group_size(1, 1, 1))) void vadd(const __global u
         // boundary checks
         if ((i + LOCAL_MEM_SIZE) > size_in16) chunk_size = size_in16 - i;
 
-    // burst read first vector from global memory to local memory
-    v1_rd:
-        __attribute__((xcl_pipeline_loop(1)))
-        __attribute__((xcl_loop_tripcount(c_size, c_size))) for (int j = 0; j < chunk_size; j++) {
-            v1_local[j] = in1[i + j];
-        }
+    // // burst read first vector from global memory to local memory
+    // v1_rd:
+    //     __attribute__((xcl_pipeline_loop(1)))
+    //     __attribute__((xcl_loop_tripcount(c_size, c_size))) for (int j = 0; j < chunk_size; j++) {
+    //         v1_local[j] = in1[i + j];
+    //     }
 
-    // burst read second vector and perform vector addition
-    v2_rd_add:
-        __attribute__((xcl_pipeline_loop(1)))
-        __attribute__((xcl_loop_tripcount(c_size, c_size))) for (int j = 0; j < chunk_size; j++) {
-            uint16 tmpV1 = v1_local[j];
-            uint16 tmpV2 = in2[i + j];
-            result_local[j] = tmpV1 + tmpV2; // Vector Addition Operation
-        }
+    // // burst read second vector and perform vector addition
+    // v2_rd_add:
+    //     __attribute__((xcl_pipeline_loop(1)))
+    //     __attribute__((xcl_loop_tripcount(c_size, c_size))) for (int j = 0; j < chunk_size; j++) {
+    //         uint16 tmpV1 = v1_local[j];
+    //         uint16 tmpV2 = in2[i + j];
+    //         result_local[j] = tmpV1 + tmpV2; // Vector Addition Operation
+    //     }
 
     // burst write the result
     out_wr:
         __attribute__((xcl_pipeline_loop(1)))
-        __attribute__((xcl_loop_tripcount(c_size, c_size))) for (int j = 0; j < chunk_size; j++) out[i + j] =
-            result_local[j];
+        __attribute__((xcl_loop_tripcount(c_size, c_size))) for (int j = 0; j < chunk_size; j++) 
+            // out[i + j] = result_local[j];
+            out[i + j] = in1[i + j] + in2[i + j];
     }
 }
