@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
 
     std::cout << "app_name,kernel_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
     std::cout << "cl_wide_mem_rw_2x,"
-              << vector_size_bytes * 3 << ","
+              << vector_size_bytes * 3 * num_cu << ","
               << iterations << ","
               << nstime_data_to_fpga / iterations / num_cu << ","
               << nstime_kernel / iterations / num_cu  << ","

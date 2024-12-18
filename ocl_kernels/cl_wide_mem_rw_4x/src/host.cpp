@@ -69,6 +69,7 @@ int main(int argc, char** argv) {
         // Creating Context and Command Queue for selected Device
         OCL_CHECK(err, context = cl::Context(device, nullptr, nullptr, nullptr, &err));
         OCL_CHECK(err, q = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &err));
+        // OCL_CHECK(err, q = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err));
 
         std::cout << "Trying to program device[" << i << "]: " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
         cl::Program program(context, {device}, bins, nullptr, &err);
@@ -201,15 +202,15 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "app_name,kernel_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
-    std::cout << "cl_wide_mem_rw_2x,"
-              << vector_size_bytes * 3 << ","
+    std::cout << "cl_wide_mem_rw_4x,"
+              << vector_size_bytes * 3 * num_cu << ","
               << iterations << ","
               << nstime_data_to_fpga / iterations / num_cu << ","
               << nstime_kernel / iterations / num_cu  << ","
               << nstime_data_to_host / iterations / num_cu << "\n";
 
     std::cout << "data_to_fpga_cpu_time,kernel_cpu_time,data_to_host_cpu_time\n";
-    std::cout << "cl_wide_mem_rw_2x," 
+    std::cout << "cl_wide_mem_rw_4x," 
               << to_fpga_time.count() / iterations << "," 
               << kernel_time.count() / iterations << "," 
               << from_fpga_time.count() / iterations << "," 
