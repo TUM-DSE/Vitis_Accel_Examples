@@ -110,16 +110,51 @@ int main(int argc, char* argv[]) {
     krnl_applyWatermark.setArg(2, width);
     krnl_applyWatermark.setArg(3, height);
 
-    // Copy input Image to device global memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_inImage}, 0 /* 0 means from host*/));
+    // for time measurement
+    cl::Event event_kernel;
+    cl::Event event_data_to_fpga;
+    cl::Event event_data_to_host;
+    const int iterations = 1000;
+    uint64_t nstimestart = 0;
+    uint64_t nstimeend = 0;
+    uint64_t nstime_kernel = 0;
+    uint64_t nstime_data_to_fpga = 0;
+    uint64_t nstime_data_to_host = 0;
 
-    // Launch the Kernel
-    OCL_CHECK(err, err = q.enqueueTask(krnl_applyWatermark));
+    for (int i = 0; i < iterations; i++) {
+        // Copy input Image to device global memory
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_inImage}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.finish());
 
-    // Copy Result from Device Global Memory to Host Local Memory
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_outImage}, CL_MIGRATE_MEM_OBJECT_HOST));
-    OCL_CHECK(err, err = q.finish());
+        // Launch the Kernel
+        OCL_CHECK(err, err = q.enqueueTask(krnl_applyWatermark, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.finish());
+
+        // Copy Result from Device Global Memory to Host Local Memory
+        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_outImage}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        OCL_CHECK(err, err = q.finish());
+
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_kernel += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_host += nstimeend - nstimestart;
+    }
     // OPENCL HOST CODE AREA END
+
+    std::cout << "app_name,kernel_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "cl_gmem_2banks,"
+              << image_size_bytes * 2 << ","
+              << iterations << ","
+              << nstime_data_to_fpga / iterations << ","
+              << nstime_kernel / iterations << ","
+              << nstime_data_to_host / iterations << "\n";
 
     // Compare Golden Image with Output image
     bool match = 1;
