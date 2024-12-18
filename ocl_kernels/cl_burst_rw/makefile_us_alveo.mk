@@ -100,7 +100,7 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/vadd.xo: src/vadd.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) $(VPP_FLAGS_vadd) -k vadd --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --config ./bandwidth.cfg $(VPP_FLAGS_vadd) -k vadd --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/vadd.xclbin: $(TEMP_DIR)/vadd.xo
 	mkdir -p $(BUILD_DIR)

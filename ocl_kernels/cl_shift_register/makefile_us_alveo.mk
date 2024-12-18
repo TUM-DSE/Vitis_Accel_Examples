@@ -98,10 +98,10 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/fir_naive.xo: src/fir.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k fir_naive --freqhz=$(FREQ):fir_naive --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --config ./bandwidth.cfg -k fir_naive --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 $(TEMP_DIR)/fir_shift_register.xo: src/fir.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k fir_shift_register --freqhz=$(FREQ):fir_shift_register --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --config ./bandwidth.cfg -k fir_shift_register --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
 $(BUILD_DIR)/fir.xclbin: $(TEMP_DIR)/fir_naive.xo $(TEMP_DIR)/fir_shift_register.xo
 	mkdir -p $(BUILD_DIR)
