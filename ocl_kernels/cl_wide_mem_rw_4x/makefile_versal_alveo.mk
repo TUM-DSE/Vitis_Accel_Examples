@@ -37,7 +37,6 @@ help:
 	$(ECHO) "  make cleanall"
 	$(ECHO) "      Command to remove all the generated files."
 	$(ECHO) ""
-
 endif
 
 ############################## Setting up Project Variables ##############################
@@ -48,73 +47,59 @@ include ./utils.mk
 TEMP_DIR := ./_x.$(TARGET).$(XSA)
 BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
 
-LINK_OUTPUT := $(BUILD_DIR)/apply_watermark.link.xclbin
+LINK_OUTPUT := $(BUILD_DIR)/vadd.link.xsa
 PACKAGE_OUT = ./package.$(TARGET)
 
 VPP_PFLAGS := 
-CMD_ARGS = -x $(BUILD_DIR)/apply_watermark.xclbin -i $(XF_PROJ_ROOT)/common/data/xilinx_img.bmp -c ./data/golden.bmp
+CMD_ARGS = $(BUILD_DIR)/vadd.xclbin
 CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++1y
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 
+
 ########################## Checking if PLATFORM in allowlist #######################
-PLATFORM_BLOCKLIST += u30 u50 u55 vck zc samsung u2_ x3522pv nodma v70 
+PLATFORM_BLOCKLIST += zc702 nodma u2_ 
 ############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/xcl2
-CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/cmdparser
-CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/logger
-CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/bitmap
-HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp $(XF_PROJ_ROOT)/common/includes/cmdparser/cmdlineparser.cpp $(XF_PROJ_ROOT)/common/includes/logger/logger.cpp $(XF_PROJ_ROOT)/common/includes/bitmap/bitmap.cpp ./src/host.cpp 
+HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp ./src/host.cpp 
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
 LDFLAGS += -lrt -lstdc++ 
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += 
 VPP_FLAGS += --save-temps 
-VPP_FLAGS_apply_watermark +=  --config ./bandwidth.cfg
 
 
-# Kernel linker flags
-# VPP_LDFLAGS_apply_watermark += --config ./apply_watermark.cfg
-MEMORY := hbm
-ifeq ($(MEMORY), ddr)
-	VPP_LDFLAGS_apply_watermark += --config ./ddr.cfg
-else
-	VPP_LDFLAGS_apply_watermark += --config ./hbm.cfg
-endif
-EXECUTABLE = ./cl_gmem_2banks
+EXECUTABLE = ./cl_wide_mem_rw
 EMCONFIG_DIR = $(TEMP_DIR)
-
-FREQ := 0:650
 
 ############################## Setting Targets ##############################
 .PHONY: all clean cleanall docs emconfig
-all: check-platform check-device check-vitis $(EXECUTABLE) $(BUILD_DIR)/apply_watermark.xclbin emconfig
+all: check-platform check-device check-vitis $(EXECUTABLE) $(BUILD_DIR)/vadd.xclbin emconfig
 
 .PHONY: host
 host: $(EXECUTABLE)
 
 .PHONY: build
-build: check-vitis check-device $(BUILD_DIR)/apply_watermark.xclbin
+build: check-vitis check-device $(BUILD_DIR)/vadd.xclbin
 
 .PHONY: xclbin
 xclbin: build
 
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
-$(TEMP_DIR)/apply_watermark.xo: src/apply_watermark.cl
+$(TEMP_DIR)/vadd.xo: src/vadd.cl
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) $(VPP_FLAGS_apply_watermark) -k apply_watermark --freqhz=$(FREQ):apply_watermark --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k vadd --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
-$(BUILD_DIR)/apply_watermark.xclbin: $(TEMP_DIR)/apply_watermark.xo
+$(BUILD_DIR)/vadd.xclbin: $(TEMP_DIR)/vadd.xo
 	mkdir -p $(BUILD_DIR)
-	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --kernel_frequency=$(FREQ) --temp_dir $(TEMP_DIR) $(VPP_LDFLAGS_apply_watermark) -o'$(LINK_OUTPUT)' $(+)
-	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/apply_watermark.xclbin
+	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
+	v++ -p $(LINK_OUTPUT) $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) --package.out_dir $(PACKAGE_OUT) -o $(BUILD_DIR)/vadd.xclbin
 
 ############################## Setting Rules for Host (Building Host Executable) ##############################
 $(EXECUTABLE): $(HOST_SRCS) | check-xrt
-		g++ -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+	g++ -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
 
 emconfig:$(EMCONFIG_DIR)/emconfig.json
 $(EMCONFIG_DIR)/emconfig.json:
@@ -129,6 +114,7 @@ else
 	$(EXECUTABLE) $(CMD_ARGS)
 endif
 
+
 .PHONY: test
 test: $(EXECUTABLE)
 ifeq ($(TARGET),$(filter $(TARGET),sw_emu hw_emu))
@@ -136,6 +122,7 @@ ifeq ($(TARGET),$(filter $(TARGET),sw_emu hw_emu))
 else
 	$(EXECUTABLE) $(CMD_ARGS)
 endif
+
 
 ############################## Cleaning Rules ##############################
 # Cleaning stuff
@@ -148,4 +135,4 @@ cleanall: clean
 	-$(RMDIR) build_dir*
 	-$(RMDIR) package.*
 	-$(RMDIR) _x* *xclbin.run_summary qemu-memory-_* emulation _vimage pl* start_simulation.sh *.xclbin
-	-$(RMDIR) ./output.bmp 
+
