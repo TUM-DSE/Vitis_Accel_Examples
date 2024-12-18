@@ -108,19 +108,9 @@ int main(int argc, char** argv) {
     uint64_t nstime_data_to_fpga = 0;
     uint64_t nstime_data_to_host = 0;
 
-    std::chrono::duration<double> kernel_time(0);
-
     for (int i = 0; i < iterations; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
-        OCL_CHECK(err, err = q.finish());
-
-        auto kernel_start = std::chrono::high_resolution_clock::now();
         OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
-        OCL_CHECK(err, err = q.finish());
-        auto kernel_end = std::chrono::high_resolution_clock::now();
-
-        kernel_time += std::chrono::duration<double>(kernel_end - kernel_start);
-
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
 
@@ -137,15 +127,13 @@ int main(int argc, char** argv) {
         nstime_data_to_host += nstimeend - nstimestart;
     }
 
-    std::cout << "app_name,kernel_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
     std::cout << "cl_wide_mem_rw,"
-              << vector_size_bytes * 3 << ","
+              << vector_size_bytes * 2 << ","
               << iterations << ","
               << nstime_data_to_fpga / iterations << ","
               << nstime_kernel / iterations << ","
               << nstime_data_to_host / iterations << "\n";
-
-    std::cout << "kernel_time_cpuclock," << kernel_time.count() / iterations << "," << std::endl;
 
     // OPENCL HOST CODE AREA END
 
