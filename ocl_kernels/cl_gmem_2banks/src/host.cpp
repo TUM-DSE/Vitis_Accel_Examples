@@ -66,6 +66,7 @@ int main(int argc, char* argv[]) {
     // OPENCL HOST CODE AREA START
     auto devices = xcl::get_xil_devices();
 
+    auto reconf_start = std::chrono::high_resolution_clock::now();
     // read_binary_file() is a utility API which will load the binaryFile
     // and will return the pointer to file buffer.
     auto fileBuf = xcl::read_binary_file(binaryFile);
@@ -92,6 +93,8 @@ int main(int argc, char* argv[]) {
         std::cerr << "Failed to program any device found, exit!\n";
         exit(EXIT_FAILURE);
     }
+    auto reconf_end = std::chrono::high_resolution_clock::now();
+    auto reconf_time = std::chrono::duration<double>(reconf_end - reconf_start);
 
     OCL_CHECK(err, cl::Buffer buffer_inImage(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, image_size_bytes,
                                              inputImage.data(), &err));
@@ -184,12 +187,13 @@ int main(int argc, char* argv[]) {
               << std::endl;
 
     // Throughputs
-    std::cout << "app_name,PCIe_Wr[GB/s],Kernel[GB/s],PCIe_Rd[GB/s],FPGA_exec_time[s]\n";
+    std::cout << "app_name,PCIe_Wr[GB/s],Kernel[GB/s],PCIe_Rd[GB/s],FPGA_exec_time[s],FPGA_reconf_time[s]\n";
     std::cout << "cl_gmem_2banks," 
               << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / to_fpga_time.count())   / 1000000000 << "," 
               << std::setprecision(3) << std::fixed << (image_size_bytes * iterations * 2 / kernel_time.count()) / 1000000000 << "," 
               << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / from_fpga_time.count()) / 1000000000 << "," 
               << total_loop_time.count() << "," 
+              << reconf_time.count() << "," 
               << std::endl;
 
     // Compare Golden Image with Output image
