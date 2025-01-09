@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
     cl::Program program;
 
     /* less iteration for emulation mode */
-    int iterations = xcl::is_emulation() ? 2 : 100;
+    int iterations = xcl::is_emulation() ? 2 : 1000;
 
     vector<int, aligned_allocator<int> > A(dims * dims);
     vector<int, aligned_allocator<int> > B(dims * dims);
