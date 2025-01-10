@@ -17,6 +17,7 @@
 #include "xcl2.hpp"
 #include <vector>
 #include <chrono>
+#include <iomanip>
 
 // DATA_SIZE should be multiple of 16 as Kernel Code is using int16 vector
 // datatype
@@ -160,9 +161,10 @@ int main(int argc, char** argv) {
     std::cout << "cl_wide_mem_rw,"
               << vector_size_bytes * 2 << ","
               << iterations << ","
-              << nstime_data_to_fpga << ","
-              << nstime_kernel << ","
-              << nstime_data_to_host << "\n";
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << nstime_data_to_fpga / (double)1'000'000'000 << ","
+              << nstime_kernel / (double)1'000'000'000 << ","
+              << nstime_data_to_host / (double)1'000'000'000 << "\n";
 
     // OPENCL HOST CODE AREA END
 

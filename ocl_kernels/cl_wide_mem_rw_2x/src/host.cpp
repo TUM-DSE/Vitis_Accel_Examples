@@ -16,6 +16,7 @@
 
 #include "xcl2.hpp"
 #include <vector>
+#include <iomanip>
 
 // DATA_SIZE should be multiple of 16 as Kernel Code is using int16 vector
 // datatype
@@ -268,9 +269,10 @@ int main(int argc, char** argv) {
     std::cout << "cl_wide_mem_rw_2x,"
               << vector_size_bytes * 2 * num_cu << ","
               << iterations << ","
-              << nstime_data_to_fpga / num_cu << ","
-              << nstime_kernel / num_cu  << ","
-              << nstime_data_to_host / num_cu << "\n";
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << nstime_data_to_fpga / (double)1'000'000'000 << ","
+              << nstime_kernel / (double)1'000'000'000 << ","
+              << nstime_data_to_host / (double)1'000'000'000 << "\n";
 
     // std::cout << "data_to_fpga_cpu_time,kernel_cpu_time,data_to_host_cpu_time\n";
     // std::cout << "cl_wide_mem_rw_2x,"

@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <iomanip>
 
 #define SIGNAL_SIZE (128 * 1024) // * sizeof(int) = 512 KB
 #define SIGNAL_SIZE_IN_EMU 1024
@@ -239,9 +240,10 @@ int main(int argc, char** argv) {
     std::cout << "cl_shift_register,"
               << size_in_bytes + coeff_size_in_bytes << ","
               << iterations << ","
-              << nstime_data_to_fpga << ","
-              << nstime_kernel << ","
-              << nstime_data_to_host << "\n";
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << nstime_data_to_fpga / (double)1'000'000'000 << ","
+              << nstime_kernel / (double)1'000'000'000 << ","
+              << nstime_data_to_host / (double)1'000'000'000 << "\n";
 
     printf("TEST PASSED\n");
     return EXIT_SUCCESS;

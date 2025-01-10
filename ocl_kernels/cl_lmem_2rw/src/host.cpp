@@ -20,6 +20,7 @@ Description: Vitis Vector Addition to utilize both Ports of BRAM memory
 #include "xcl2.hpp"
 #include <vector>
 #include <chrono>
+#include <iomanip>
 
 #define DATA_SIZE (64 * 1024) // * 2 * sizeof(int) = 512 KB
 
@@ -155,9 +156,10 @@ int main(int argc, char** argv) {
     std::cout << "cl_lmem_2rw,"
               << vector_size_bytes * 2 << ","
               << iterations << ","
-              << nstime_data_to_fpga << ","
-              << nstime_kernel << ","
-              << nstime_data_to_host << "\n";
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << nstime_data_to_fpga / (double)1'000'000'000 << ","
+              << nstime_kernel / (double)1'000'000'000 << ","
+              << nstime_data_to_host / (double)1'000'000'000 << "\n";
 
     // OPENCL HOST CODE AREA END
 

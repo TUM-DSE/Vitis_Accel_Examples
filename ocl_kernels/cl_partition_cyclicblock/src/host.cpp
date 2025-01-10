@@ -19,6 +19,7 @@
 #include <random>
 #include <vector>
 #include <chrono>
+#include <iomanip>
 
 using std::default_random_engine;
 using std::generate;
@@ -270,9 +271,10 @@ int main(int argc, char** argv) {
     std::cout << "cl_partition_cyclicblock,"
               << array_size_bytes * 2 << ","
               << iterations << ","
-              << nstime_data_to_fpga << ","
-              << nstime_kernel << ","
-              << nstime_data_to_host << "\n";
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << nstime_data_to_fpga / (double)1'000'000'000 << ","
+              << nstime_kernel / (double)1'000'000'000 << ","
+              << nstime_data_to_host / (double)1'000'000'000 << "\n";
 
     // printf(
     //     "|-------------------------+-------------------------|\n"
