@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
     int64_t nstime_data_to_fpga = 0;
     int64_t nstime_data_to_host = 0;
 
-    for (int i = 0; i < iterations; i+
+    for (int i = 0; i < iterations; i++) {
         start_time = std::chrono::high_resolution_clock::now();
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/));
         q.finish();
