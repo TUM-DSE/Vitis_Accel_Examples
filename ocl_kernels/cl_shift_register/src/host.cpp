@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
     // cl::Event event_kernel;
     // cl::Event event_data_to_fpga;
     // cl::Event event_data_to_host;
-    int iterations = xcl::is_emulation() ? 2 : 100;
+    int iterations = xcl::is_emulation() ? 2 : 1000;
     // uint64_t nstimestart = 0;
     // uint64_t nstimeend = 0;
     // uint64_t nstime_kernel = 0;
@@ -235,13 +235,13 @@ int main(int argc, char** argv) {
     printf("Example Testdata Signal_Length=%u for %d iteration\n", signal_size, iterations);
     // print_summary("fir_naive", "fir_shift_register", fir_naive_time, fir_sr_time, iterations);
 
-    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_time,kernel_time,data_to_host_time\n";
     std::cout << "cl_shift_register,"
               << size_in_bytes + coeff_size_in_bytes << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
+              << nstime_data_to_fpga << ","
+              << nstime_kernel << ","
+              << nstime_data_to_host << "\n";
 
     printf("TEST PASSED\n");
     return EXIT_SUCCESS;

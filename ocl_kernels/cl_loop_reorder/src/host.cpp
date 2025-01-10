@@ -131,7 +131,7 @@ int main(int argc, char** argv) {
     // cl::Event event_kernel;
     // cl::Event event_data_to_fpga;
     // cl::Event event_data_to_host;
-    const int iterations = 1000;
+    const int iterations = 16000;
     // uint64_t nstimestart = 0;
     // uint64_t nstimeend = 0;
     // uint64_t nstime_kernel = 0;
@@ -183,13 +183,13 @@ int main(int argc, char** argv) {
         // nstime_data_to_host += nstimeend - nstimestart;
     }
 
-    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_time,kernel_time,data_to_host_time\n";
     std::cout << "cl_loop_reorder,"
               << matrix_size_bytes * 2 << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
+              << nstime_data_to_fpga << ","
+              << nstime_kernel << ","
+              << nstime_data_to_host << "\n";
 
     // OPENCL HOST CODE AREA END
 

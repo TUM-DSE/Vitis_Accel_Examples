@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
     // cl::Event event_kernel;
     // cl::Event event_data_to_fpga;
     // cl::Event event_data_to_host;
-    const int iterations = 1000;
+    const int iterations = 114000;
     // uint64_t nstimestart = 0;
     // uint64_t nstimeend = 0;
     // uint64_t nstime_kernel = 0;
@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
     int64_t nstime_data_to_fpga = 0;
     int64_t nstime_data_to_host = 0;
 
-    for (int i = 0; i < iterations; i++) {
+    for (int i = 0; i < iterations; i+
         start_time = std::chrono::high_resolution_clock::now();
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/));
         q.finish();
@@ -191,13 +191,13 @@ int main(int argc, char** argv) {
     }
     // OPENCL HOST CODE AREA END
 
-    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_time,kernel_time,data_to_host_time\n";
     std::cout << "cl_systolic_array,"
               << matrix_size_bytes * 2 << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
+              << nstime_data_to_fpga << ","
+              << nstime_kernel << ","
+              << nstime_data_to_host << "\n";
 
     // Compute Software Results
     m_softwareGold(source_in1, source_in2, source_sw_results);

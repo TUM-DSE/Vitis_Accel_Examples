@@ -163,13 +163,13 @@ int main(int argc, char** argv) {
         // nstime_data_to_host += nstimeend - nstimestart;
     }
 
-    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_time,kernel_time,data_to_host_time\n";
     std::cout << "cl_wide_mem_rw,"
               << vector_size_bytes * 2 << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
+              << nstime_data_to_fpga << ","
+              << nstime_kernel << ","
+              << nstime_data_to_host << "\n";
 
     // std::cout << "kernel_time_cpuclock," << kernel_time.count() / iterations << "," << std::endl;
 

@@ -147,13 +147,13 @@ int main(int argc, char** argv) {
     }
     // OPENCL HOST CODE AREA END
 
-    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_time,kernel_time,data_to_host_time\n";
     std::cout << "cl_dataflow_func,"
               << vector_size_bytes << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
+              << nstime_data_to_fpga << ","
+              << nstime_kernel << ","
+              << nstime_data_to_host << "\n";
 
 
     // Compare the results of the Device to the simulation
