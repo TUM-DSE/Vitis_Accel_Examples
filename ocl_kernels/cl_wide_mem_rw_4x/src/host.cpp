@@ -245,12 +245,12 @@ int main(int argc, char** argv) {
               << vector_size_bytes * 2 * num_cu << ","
               << iterations << ","
               << std::setprecision(std::numeric_limits<double>::digits10)
-              << nstime_data_to_fpga_cpu / (double)1'000'000'000 << ","
-              << nstime_kernel_cpu / (double)1'000'000'000 << ","
-              << nstime_data_to_host_cpu / (double)1'000'000'000 << ","
-              << nstime_data_to_fpga_ocl / (double)1'000'000'000 << ","
-              << nstime_kernel_ocl / (double)1'000'000'000 << ","
-              << nstime_data_to_host_ocl / (double)1'000'000'000 << "\n";
+              << nstime_data_to_fpga_cpu / num_cu / (double)1'000'000'000 << ","
+              << nstime_kernel_cpu / num_cu / (double)1'000'000'000 << ","
+              << nstime_data_to_host_cpu / num_cu / (double)1'000'000'000 << ","
+              << nstime_data_to_fpga_ocl / num_cu / (double)1'000'000'000 << ","
+              << nstime_kernel_ocl / num_cu / (double)1'000'000'000 << ","
+              << nstime_data_to_host_ocl / num_cu / (double)1'000'000'000 << "\n";
 
     // std::cout << "data_to_fpga_cpu_time,kernel_cpu_time,data_to_host_cpu_time\n";
     // std::cout << "cl_wide_mem_rw_2x,"
