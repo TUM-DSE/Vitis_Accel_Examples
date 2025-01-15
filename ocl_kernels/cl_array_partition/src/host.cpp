@@ -15,9 +15,11 @@
 */
 #include "xcl2.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <random>
 #include <vector>
+#include <iomanip>
 
 using std::default_random_engine;
 using std::generate;
@@ -165,17 +167,20 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = matmul_kernel.setArg(2, buffer_c));
     OCL_CHECK(err, err = matmul_kernel.setArg(3, columns));
 
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_a, buffer_b}, 0 /* 0 means from host*/));
-
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
     cl::Event event_data_to_host;
-    const int iterations = 100;
+    const int iterations = 16000;
+    std::chrono::high_resolution_clock::time_point start_time, end_time;
+    std::chrono::duration<double> duration;
+    int64_t nstime_cpu = 0;
     uint64_t nstimestart = 0;
     uint64_t nstimeend = 0;
-    uint64_t nstime_kernel = 0;
-    uint64_t nstime_data_to_fpga = 0;
-    uint64_t nstime_data_to_host = 0;
+    uint64_t nstime_kernel_ocl = 0;
+    uint64_t nstime_data_to_fpga_ocl = 0;
+    uint64_t nstime_data_to_host_ocl = 0;
+
+    start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations / 2; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_a, buffer_b}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
@@ -185,16 +190,20 @@ int main(int argc, char** argv) {
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_fpga += nstimeend - nstimestart;
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_kernel += nstimeend - nstimestart;
+        nstime_kernel_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_host += nstimeend - nstimestart;
+        nstime_data_to_host_ocl += nstimeend - nstimestart;
     }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration<double>(end_time - start_time);
+    nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
     verify(gold1, C);
     // printf("| %-23s | %23lu |\n", "matmul: ", matmul_time);
@@ -206,6 +215,8 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = matmul_partition_kernel.setArg(2, buffer_f));
     OCL_CHECK(err, err = matmul_partition_kernel.setArg(3, columns));
 
+    start_time = std::chrono::high_resolution_clock::now();
+
     for (int i = 0; i < iterations / 2; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_d, buffer_e}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
         OCL_CHECK(err, err = q.enqueueTask(matmul_partition_kernel, nullptr, &event_kernel));
@@ -214,28 +225,35 @@ int main(int argc, char** argv) {
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_fpga += nstimeend - nstimestart;
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_kernel += nstimeend - nstimestart;
+        nstime_kernel_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_host += nstimeend - nstimestart;
+        nstime_data_to_host_ocl += nstimeend - nstimestart;
     }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration<double>(end_time - start_time);
+    nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
     verify(gold2, F);
 
     // printf("| %-23s | %23lu |\n", "matmul: partition", matmul_partition_time);
 
-    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
+    std::cout << "app_name,kernel_input_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
     std::cout << "cl_array_partition,"
               << array_size_bytes * 2 << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << nstime_cpu / (double)1'000'000'000 << ","
+              << nstime_data_to_fpga_ocl / (double)1'000'000'000 << ","
+              << nstime_kernel_ocl / (double)1'000'000'000 << ","
+              << nstime_data_to_host_ocl / (double)1'000'000'000 << "\n";
 
     // printf("|-------------------------+-------------------------|\n");
     // printf(

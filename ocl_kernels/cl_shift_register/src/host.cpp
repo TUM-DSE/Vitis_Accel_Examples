@@ -28,6 +28,8 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <chrono>
+#include <iomanip>
 
 #define SIGNAL_SIZE (128 * 1024) // * sizeof(int) = 512 KB
 #define SIGNAL_SIZE_IN_EMU 1024
@@ -125,12 +127,17 @@ int main(int argc, char** argv) {
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
     cl::Event event_data_to_host;
-    int iterations = xcl::is_emulation() ? 2 : 100;
+    int iterations = xcl::is_emulation() ? 2 : 1000;
+    std::chrono::high_resolution_clock::time_point start_time, end_time;
+    std::chrono::duration<double> duration;
+    int64_t nstime_cpu = 0;
     uint64_t nstimestart = 0;
     uint64_t nstimeend = 0;
-    uint64_t nstime_kernel = 0;
-    uint64_t nstime_data_to_fpga = 0;
-    uint64_t nstime_data_to_host = 0;
+    uint64_t nstime_kernel_ocl = 0;
+    uint64_t nstime_data_to_fpga_ocl = 0;
+    uint64_t nstime_data_to_host_ocl = 0;
+
+    start_time = std::chrono::high_resolution_clock::now();
 
     // Running naive kernel iterations times
     for (int i = 0; i < iterations / 2; i++) {
@@ -141,16 +148,20 @@ int main(int argc, char** argv) {
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_fpga += nstimeend - nstimestart;
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_kernel += nstimeend - nstimestart;
+        nstime_kernel_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_host += nstimeend - nstimestart;
+        nstime_data_to_host_ocl += nstimeend - nstimestart;
     }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration<double>(end_time - start_time);
+    nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
     verify(gold, out);
 
@@ -162,6 +173,8 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = fir_sr_kernel.setArg(2, buffer_coeff_B));
     OCL_CHECK(err, err = fir_sr_kernel.setArg(3, signal_size));
 
+    start_time = std::chrono::high_resolution_clock::now();
+
     // Running Shift Register FIR iterations times
     for (int i = 0; i < iterations / 2; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_signal_B, buffer_coeff_B}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
@@ -171,29 +184,36 @@ int main(int argc, char** argv) {
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_fpga += nstimeend - nstimestart;
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_kernel += nstimeend - nstimestart;
+        nstime_kernel_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_host += nstimeend - nstimestart;
+        nstime_data_to_host_ocl += nstimeend - nstimestart;
     }
+
+    end_time = std::chrono::high_resolution_clock::now();
+    duration = std::chrono::duration<double>(end_time - start_time);
+    nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
     verify(gold, out);
 
     printf("Example Testdata Signal_Length=%u for %d iteration\n", signal_size, iterations);
     // print_summary("fir_naive", "fir_shift_register", fir_naive_time, fir_sr_time, iterations);
 
-    std::cout << "app_name,kernel_input_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
+    std::cout << "app_name,kernel_input_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
     std::cout << "cl_shift_register,"
               << size_in_bytes + coeff_size_in_bytes << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << nstime_cpu / (double)1'000'000'000 << ","
+              << nstime_data_to_fpga_ocl / (double)1'000'000'000 << ","
+              << nstime_kernel_ocl / (double)1'000'000'000 << ","
+              << nstime_data_to_host_ocl / (double)1'000'000'000 << "\n";
 
     printf("TEST PASSED\n");
     return EXIT_SUCCESS;
