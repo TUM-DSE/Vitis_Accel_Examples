@@ -178,9 +178,10 @@ int main(int argc, char** argv) {
     nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
-    std::cout << "app_name,kernel_input_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
+    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
     std::cout << "cl_systolic_array,"
               << matrix_size_bytes * 2 << ","
+              << matrix_size_bytes << ","
               << iterations << ","
               << std::setprecision(std::numeric_limits<double>::digits10)
               << nstime_cpu / (double)1'000'000'000 << ","
