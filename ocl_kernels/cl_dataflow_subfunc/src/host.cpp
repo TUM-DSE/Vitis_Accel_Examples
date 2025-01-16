@@ -110,9 +110,11 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < iterations; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_input}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(krnl_adder, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
-        q.finish();
+        OCL_CHECK(err, err = q.finish());
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));

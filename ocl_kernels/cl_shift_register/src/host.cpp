@@ -178,9 +178,11 @@ int main(int argc, char** argv) {
     // Running Shift Register FIR iterations times
     for (int i = 0; i < iterations / 2; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_signal_B, buffer_coeff_B}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(fir_sr_kernel, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output_B}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
-        q.finish();
+        OCL_CHECK(err, err = q.finish());
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
