@@ -24,7 +24,7 @@
 // will read 16 integers value.
 // As the other examples only read 1 int from memory at once, we use 16 times the
 // data size of the other examples
-#define DATA_SIZE (1024 * 1024) // * 2 * sizeof(int) = 8 MB
+#define DATA_SIZE (2 * 1024 * 1024) // 2 * 2(num_cu) * 2(buffers) * sizeof(int) = 32 MB
 
 // Number of HBM PCs required
 #define MAX_HBM_PC_COUNT 32
