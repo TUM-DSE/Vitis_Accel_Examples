@@ -16,7 +16,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <unistd.h>
+#include <cstring>
+#include <filesystem>
 
 #include <iostream>
 
@@ -55,8 +58,24 @@ bool BitmapInterface::readBitmapFile() {
         return false;
     }
 
+    struct stat st;
+    if (fstat(fd, &st) == -1) {
+        std::cerr << "fstat failed\n";
+        return false;
+    }
+
+    char* file = (char*)mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (file == MAP_FAILED) {
+        std::cerr << "Failed to mmap file " << filename << "\n";
+        return false;
+    }
+
+    unsigned int offset = 0;
+
     core = new char[14];
-    read(fd, core, 14);
+    std::memcpy(core, file, 14);
+    offset+=14;
+
     magicNumber = (*(unsigned short*)(&(core[0])));
     fileSize = (*(unsigned int*)(&(core[2])));
     offsetOfImage = (*(unsigned int*)(&(core[10])));
@@ -64,7 +83,8 @@ bool BitmapInterface::readBitmapFile() {
     // Just read in the DIB, but don't process it
     sizeOfDIB = offsetOfImage - 14;
     dib = new char[sizeOfDIB];
-    read(fd, dib, sizeOfDIB);
+    std::memcpy(dib, &file[offset], sizeOfDIB);
+    offset+=sizeOfDIB;
 
     width = (*(int*)(&(dib[4])));
     height = (*(int*)(&(dib[8])));
@@ -78,7 +98,8 @@ bool BitmapInterface::readBitmapFile() {
         // Use an integer for every pixel even though we might not need that
         //  much space (padding 0 bits in the rest of the integer)
         image[i] = 0;
-        read(fd, &(image[i]), 3);
+        std::memcpy(&(image[i]), &file[offset], 3);
+        offset+=3;
     }
 
     return true;
