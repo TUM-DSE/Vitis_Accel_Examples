@@ -173,6 +173,10 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = fir_sr_kernel.setArg(2, buffer_coeff_B));
     OCL_CHECK(err, err = fir_sr_kernel.setArg(3, signal_size));
 
+    // This is required for proper time measurements in Proteus. We add it here
+    // as well to have the same host code for Proteus and native.
+    q.finish();
+
     start_time = std::chrono::high_resolution_clock::now();
 
     // Running Shift Register FIR iterations times

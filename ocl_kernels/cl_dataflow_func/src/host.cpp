@@ -105,6 +105,10 @@ int main(int argc, char** argv) {
     uint64_t nstime_data_to_fpga_ocl = 0;
     uint64_t nstime_data_to_host_ocl = 0;
 
+    // This is required for proper time measurements in Proteus. We add it here
+    // as well to have the same host code for Proteus and native.
+    q.finish();
+
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
