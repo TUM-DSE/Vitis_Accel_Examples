@@ -20,36 +20,56 @@
 #include <vector>
 #include <iomanip>
 
-// Artificial limit for available FPGA memory when over-subscription is enabled
-constexpr size_t MEM_LIMIT = 1000 * 1024 * 1024;
-// DATA_SIZE should be multiple of 16 as kernel code is using int16 vector
+constexpr size_t MiB = 1024 * 1024;
+constexpr size_t ALIGNMENT = 4096;
+// Artificial limit for available FPGA memory, overridden by -m option
+constexpr size_t MEM_LIMIT = SIZE_MAX;
+// DATA_SIZE should be multiple of 64 as kernel code is using int16 vector
 // datatype to read the operands from global memory 16 ints at a time. We aim
 // for the 2 input buffers and the output buffer to not fit into MEM_LIMIT to
-// simulate memory over-subscription.
-constexpr size_t DATA_SIZE = 256 * 1024 * 1024; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
+// simulate memory over-subscription. Overridden by -s option.
+constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
 
 int main(int argc, char** argv) {
-    assert(DATA_SIZE % 16 == 0);
-
-    if (argc != 3) {
-        std::cout << "Usage: " << argv[0] << " <XCLBIN File> <1: over-subscription, 0: no over-subscription>" << std::endl;
-        return EXIT_FAILURE;
+    if (argc < 2) {
+      std::cout << "Usage: " << argv[0] << " <XCLBIN File>\n"
+                << "  [-m <size>] On-FPGA memory limit in MiB. Default: " << MEM_LIMIT / MiB << "\n"
+                << "  [-s <size>] Size per buffer in MiB. The application uses 3 buffers. Default: " << DATA_SIZE / MiB << "\n\n"
+                << "Memory over-subscription is active when memory limit < 3 * buffer size\n";
+      return EXIT_FAILURE;
     }
 
+    size_t mem_limit = MEM_LIMIT;
+    size_t data_size = DATA_SIZE;
     std::string binaryFile = argv[1];
-    bool oversub = std::stoi(argv[2]);
 
-    std::cout << "memory over-subscription " << (oversub ? "enabled" : "disabled") << "\n";
+    for (int i = 2; i < argc; i += 2) {
+        if (strcmp("-m", argv[i]) == 0) {
+            mem_limit = std::stol(argv[i + 1]) * MiB;
+        } else if (strcmp("-s", argv[i]) == 0) {
+            data_size = std::stol(argv[i + 1]) * MiB;
+        }
+    }
+
+    assert(data_size % ALIGNMENT == 0);
+
+    std::cout << "Memory limit: " << mem_limit / MiB << " MiB\n";
+    std::cout << "Buffer size:  " << data_size / MiB << " MiB, 3 buffers in total\n";
+    if (3 * data_size > mem_limit) {
+        std::cout << "=> Memory oversubscription enabled\n";
+    } else {
+        std::cout << "=> Memory oversubscription disabled\n";
+    }
 
     // Allocate Memory in Host Memory
-    size_t vector_size_bytes = sizeof(int) * DATA_SIZE;
-    std::vector<int, aligned_allocator<int> > source_in1(DATA_SIZE);
-    std::vector<int, aligned_allocator<int> > source_in2(DATA_SIZE);
-    std::vector<int, aligned_allocator<int> > source_hw_results(DATA_SIZE);
-    std::vector<int, aligned_allocator<int> > source_sw_results(DATA_SIZE);
+    size_t vector_size = data_size / sizeof(int);
+    std::vector<int, aligned_allocator<int> > source_in1(vector_size);
+    std::vector<int, aligned_allocator<int> > source_in2(vector_size);
+    std::vector<int, aligned_allocator<int> > source_hw_results(vector_size);
+    std::vector<int, aligned_allocator<int> > source_sw_results(vector_size);
 
     // Create the test data and Software Result
-    for (size_t i = 0; i < DATA_SIZE; i++) {
+    for (size_t i = 0; i < vector_size; i++) {
         source_in1[i] = i;
         source_in2[i] = i * i;
         source_sw_results[i] = i * i + i;
@@ -90,24 +110,21 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    size_t mem_limit = oversub ? MEM_LIMIT : SIZE_MAX;
-
-    size_t chunk_size = vector_size_bytes;
-    if (3 * vector_size_bytes > mem_limit) {
-        // Round down to closest multiple of 16
-        // TODO: proper alignment, maybe 4096? XRT gives warning about unaligned host pointer
-        chunk_size = (mem_limit / 3) & ~0xF;
+    size_t chunk_size = data_size;
+    if (3 * data_size > mem_limit) {
+        // 3 chunks have to fit into mem_limit, also round down to closest multiple of ALIGNMENT
+        chunk_size = (mem_limit / 3) & ~(ALIGNMENT - 1);
     }
-    size_t num_chunks = std::ceil(vector_size_bytes / (double)chunk_size);
-    size_t last_chunk_size = vector_size_bytes % chunk_size;
+    size_t num_chunks = std::ceil(data_size / (double)chunk_size);
+    size_t last_chunk_size = data_size % chunk_size;
     if (last_chunk_size == 0) {
         last_chunk_size = chunk_size;
     }
-    std::cout << "memory limit:    " << mem_limit << "\n";
-    std::cout << "3 * vector size: " << 3 * vector_size_bytes << "\n";
-    std::cout << "num chunks:      " << num_chunks << "\n";
-    std::cout << "chunk size:      " << chunk_size << "\n";
-    std::cout << "last chunk size: " << last_chunk_size << "\n";
+    std::cout << "memory limit:      " << mem_limit << " B\n";
+    std::cout << "3 * buffer size:   " << 3 * data_size << " B\n";
+    std::cout << "chunks per buffer: " << num_chunks << "\n";
+    std::cout << "chunk size:        " << chunk_size << " B\n";
+    std::cout << "last chunk size:   " << last_chunk_size << " B\n";
 
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
@@ -182,8 +199,8 @@ int main(int argc, char** argv) {
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
     std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
     std::cout << "cl_wide_mem_rw,"
-              << vector_size_bytes * 2 << ","
-              << vector_size_bytes << ","
+              << data_size * 2 << ","
+              << data_size << ","
               << iterations << ","
               << std::setprecision(std::numeric_limits<double>::digits10)
               << nstime_cpu / (double)1'000'000'000 << ","
@@ -193,7 +210,7 @@ int main(int argc, char** argv) {
 
     // Compare the results of the Device to the simulation
     int match = 0;
-    for (size_t i = 0; i < DATA_SIZE; i++) {
+    for (size_t i = 0; i < vector_size; i++) {
         if (source_hw_results[i] != source_sw_results[i]) {
             std::cout << "Error: Result mismatch" << std::endl;
             std::cout << "i = " << i << " CPU result = " << source_sw_results[i]
