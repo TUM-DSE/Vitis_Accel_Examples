@@ -56,9 +56,9 @@ int main(int argc, char** argv) {
     std::cout << "Memory limit: " << mem_limit / MiB << " MiB\n";
     std::cout << "Buffer size:  " << data_size / MiB << " MiB, 3 buffers in total\n";
     if (3 * data_size > mem_limit) {
-        std::cout << "=> Memory oversubscription enabled\n";
+        std::cout << "=> Memory over-subscription enabled\n";
     } else {
-        std::cout << "=> Memory oversubscription disabled\n";
+        std::cout << "=> Memory over-subscription disabled\n";
     }
 
     // Allocate Memory in Host Memory
@@ -169,11 +169,13 @@ int main(int argc, char** argv) {
             start_time = std::chrono::high_resolution_clock::now();
 
             OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
-            OCL_CHECK(err, err = q.finish());
             OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
-            OCL_CHECK(err, err = q.finish());
             OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
             OCL_CHECK(err, err = q.finish());
+
+            end_time = std::chrono::high_resolution_clock::now();
+            duration = std::chrono::duration<double>(end_time - start_time);
+            nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
             OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
             OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
@@ -186,13 +188,9 @@ int main(int argc, char** argv) {
             OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
             OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
             nstime_data_to_host_ocl += nstimeend - nstimestart;
-            // OPENCL HOST CODE AREA END
-
-            end_time = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration<double>(end_time - start_time);
-            nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
         }
     }
+    // OPENCL HOST CODE AREA END
 
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
     std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
