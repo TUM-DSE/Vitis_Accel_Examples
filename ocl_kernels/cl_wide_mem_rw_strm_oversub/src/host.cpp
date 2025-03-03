@@ -15,8 +15,10 @@
 */
 
 #include "xcl2.hpp"
+#include <climits>
 #include <cmath>
 #include <cassert>
+#include <cstdint>
 #include <vector>
 #include <iomanip>
 
@@ -115,11 +117,15 @@ int main(int argc, char** argv) {
         // 3 chunks have to fit into mem_limit, also round down to closest multiple of ALIGNMENT
         chunk_size = (mem_limit / 3) & ~(ALIGNMENT - 1);
     }
+    // The size parameter of the kernel is type int
+    assert(chunk_size <= INT_MAX);
+
     size_t num_chunks = std::ceil(data_size / (double)chunk_size);
     size_t last_chunk_size = data_size % chunk_size;
     if (last_chunk_size == 0) {
         last_chunk_size = chunk_size;
     }
+
     std::cout << "memory limit:      " << mem_limit << " B\n";
     std::cout << "3 * buffer size:   " << 3 * data_size << " B\n";
     std::cout << "chunks per buffer: " << num_chunks << "\n";
