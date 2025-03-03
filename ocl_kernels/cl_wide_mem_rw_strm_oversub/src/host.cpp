@@ -168,26 +168,24 @@ int main(int argc, char** argv) {
 
             start_time = std::chrono::high_resolution_clock::now();
 
-            for (int i = 0; i < iterations; i++) {
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
-                OCL_CHECK(err, err = q.finish());
-                OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
-                OCL_CHECK(err, err = q.finish());
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
-                OCL_CHECK(err, err = q.finish());
+            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+            OCL_CHECK(err, err = q.finish());
+            OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
+            OCL_CHECK(err, err = q.finish());
+            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+            OCL_CHECK(err, err = q.finish());
 
-                OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-                OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-                nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+            OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+            OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+            nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
-                OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-                OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-                nstime_kernel_ocl += nstimeend - nstimestart;
+            OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+            OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+            nstime_kernel_ocl += nstimeend - nstimestart;
 
-                OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-                OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-                nstime_data_to_host_ocl += nstimeend - nstimestart;
-            }
+            OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+            OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+            nstime_data_to_host_ocl += nstimeend - nstimestart;
             // OPENCL HOST CODE AREA END
 
             end_time = std::chrono::high_resolution_clock::now();
