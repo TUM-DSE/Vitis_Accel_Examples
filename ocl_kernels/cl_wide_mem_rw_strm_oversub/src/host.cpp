@@ -33,7 +33,7 @@ constexpr size_t MEM_LIMIT = SIZE_MAX;
 constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
+    if (argc < 2 || argc % 2 != 0) {
       std::cout << "Usage: " << argv[0] << " <XCLBIN File>\n"
                 << "  [-m <size>] On-FPGA memory limit in MiB. Default: " << MEM_LIMIT / MiB << "\n"
                 << "  [-s <size>] Size per buffer in MiB. The application uses 3 buffers. Default: " << DATA_SIZE / MiB << "\n\n"
