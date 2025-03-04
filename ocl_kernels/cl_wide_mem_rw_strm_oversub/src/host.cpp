@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cassert>
 #include <cstdint>
+#include <cstdlib>
 #include <vector>
 #include <iomanip>
 
@@ -61,10 +62,11 @@ int main(int argc, char** argv) {
     }
 
     assert(data_size % ALIGNMENT == 0);
+    bool oversub = 3 * data_size > mem_limit;
 
     std::cout << "Memory limit: " << mem_limit / MiB << " MiB\n";
     std::cout << "Buffer size:  " << data_size / MiB << " MiB, 3 buffers in total\n";
-    if (3 * data_size > mem_limit) {
+    if (oversub) {
         std::cout << "=> Memory over-subscription enabled\n";
         std::cout << "   Over-subscription optimizations " << (optimized ? "enabled" : "disabled") << "\n";
     } else {
@@ -102,7 +104,7 @@ int main(int argc, char** argv) {
         auto device = devices[i];
         // Creating Context and Command Queue for selected Device
         OCL_CHECK(err, context = cl::Context(device, nullptr, nullptr, nullptr, &err));
-        OCL_CHECK(err, q = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &err));
+        OCL_CHECK(err, q = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err));
 
         std::cout << "Trying to program device[" << i << "]: " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
         cl::Program program(context, {device}, bins, nullptr, &err);
@@ -121,10 +123,17 @@ int main(int argc, char** argv) {
     }
 
     size_t chunk_size = data_size;
-    if (3 * data_size > mem_limit) {
-        // 3 chunks have to fit into mem_limit, also round down to closest multiple of ALIGNMENT
+    if (oversub) {
+      // Without optimizations, 3 chunks have to fit into mem_limit. With
+      // optimizations, 6 chunks have to fit. Also round down to closest
+      // multiple of ALIGNMENT.
+      if (optimized) {
+        chunk_size = (mem_limit / 6) & ~(ALIGNMENT - 1);
+      } else {
         chunk_size = (mem_limit / 3) & ~(ALIGNMENT - 1);
+      }
     }
+
     // The size parameter of the kernel is type int
     assert(chunk_size <= INT_MAX);
 
@@ -143,7 +152,7 @@ int main(int argc, char** argv) {
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
     cl::Event event_data_to_host;
-    const int iterations = 10;
+    const int iterations = 1;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     std::chrono::duration<double> duration;
     int64_t nstime_cpu = 0;
@@ -153,55 +162,65 @@ int main(int argc, char** argv) {
     uint64_t nstime_data_to_fpga_ocl = 0;
     uint64_t nstime_data_to_host_ocl = 0;
 
-    for (int i = 0; i < iterations; i++) {
-        for (size_t i = 0; i < num_chunks; i++) {
-            size_t cur_chunk_size = chunk_size;
-            if (i == num_chunks - 1) {
-                cur_chunk_size = last_chunk_size;
+    if (oversub && optimized) {
+        for (int i = 0; i < iterations; i++) {
+            std::cerr << "Optimized over-subscription not implemented yet\n";
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        // No over-subscription or unoptimized over-subscription
+        for (int i = 0; i < iterations; i++) {
+            for (size_t i = 0; i < num_chunks; i++) {
+                size_t cur_chunk_size = chunk_size;
+                if (i == num_chunks - 1) {
+                    cur_chunk_size = last_chunk_size;
+                }
+
+                auto buf_offset = i * chunk_size / sizeof(int);
+                // Allocate Buffer in Global Memory
+                OCL_CHECK(err, cl::Buffer buffer_in1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
+                                                    source_in1.data() + buf_offset, &err));
+                OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
+                                                    source_in2.data() + buf_offset, &err));
+                OCL_CHECK(err, cl::Buffer buffer_output(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, cur_chunk_size,
+                                                    source_hw_results.data() + buf_offset, &err));
+
+                // Set the kernel arguments
+                int nargs = 0;
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in2));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_output));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)cur_chunk_size));
+
+                // This is required for proper time measurements in Proteus. We add it here
+                // as well to have the same host code for Proteus and native.
+                q.finish();
+
+                start_time = std::chrono::high_resolution_clock::now();
+
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+                std::vector<cl::Event> wait_kernel{event_data_to_fpga};
+                OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, &wait_kernel, &event_kernel));
+                std::vector<cl::Event> wait_to_host{event_kernel};
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, &wait_to_host, &event_data_to_host));
+                OCL_CHECK(err, err = q.finish());
+
+                end_time = std::chrono::high_resolution_clock::now();
+                duration = std::chrono::duration<double>(end_time - start_time);
+                nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+
+                OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+                OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+                nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+                OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+                OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+                nstime_kernel_ocl += nstimeend - nstimestart;
+
+                OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+                OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+                nstime_data_to_host_ocl += nstimeend - nstimestart;
             }
-
-            auto buf_offset = i * chunk_size / sizeof(int);
-            // Allocate Buffer in Global Memory
-            OCL_CHECK(err, cl::Buffer buffer_in1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                                                source_in1.data() + buf_offset, &err));
-            OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                                                source_in2.data() + buf_offset, &err));
-            OCL_CHECK(err, cl::Buffer buffer_output(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, cur_chunk_size,
-                                                source_hw_results.data() + buf_offset, &err));
-
-            // Set the kernel arguments
-            int nargs = 0;
-            OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1));
-            OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in2));
-            OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_output));
-            OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)cur_chunk_size));
-
-            // This is required for proper time measurements in Proteus. We add it here
-            // as well to have the same host code for Proteus and native.
-            q.finish();
-
-            start_time = std::chrono::high_resolution_clock::now();
-
-            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
-            OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
-            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
-            OCL_CHECK(err, err = q.finish());
-
-            end_time = std::chrono::high_resolution_clock::now();
-            duration = std::chrono::duration<double>(end_time - start_time);
-            nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-
-            OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-            OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-            nstime_data_to_fpga_ocl += nstimeend - nstimestart;
-
-            OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-            OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-            nstime_kernel_ocl += nstimeend - nstimestart;
-
-            OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-            OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-            nstime_data_to_host_ocl += nstimeend - nstimestart;
         }
     }
     // OPENCL HOST CODE AREA END
