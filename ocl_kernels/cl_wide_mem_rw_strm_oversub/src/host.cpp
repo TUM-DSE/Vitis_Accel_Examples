@@ -31,25 +31,32 @@ constexpr size_t MEM_LIMIT = SIZE_MAX;
 // for the 2 input buffers and the output buffer to not fit into MEM_LIMIT to
 // simulate memory over-subscription. Overridden by -s option.
 constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
+// Whether data transfer and kernel execution should be overlapped where
+// possible by having 2 chunks instead of 1 per buffer in FPGA memory
+constexpr bool OPTIMIZED = false;
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc % 2 != 0) {
+    if (argc < 2) {
       std::cout << "Usage: " << argv[0] << " <XCLBIN File>\n"
                 << "  [-m <size>] On-FPGA memory limit in MiB. Default: " << MEM_LIMIT / MiB << "\n"
-                << "  [-s <size>] Size per buffer in MiB. The application uses 3 buffers. Default: " << DATA_SIZE / MiB << "\n\n"
+                << "  [-s <size>] Size per buffer in MiB. The application uses 3 buffers. Default: " << DATA_SIZE / MiB << "\n"
+                << "  [-o]        Enable over-subscription optimizations (overlapping data transfer and kernel execution)\n\n"
                 << "Memory over-subscription is active when memory limit < 3 * buffer size\n";
       return EXIT_FAILURE;
     }
 
     size_t mem_limit = MEM_LIMIT;
     size_t data_size = DATA_SIZE;
+    bool optimized = OPTIMIZED;
     std::string binaryFile = argv[1];
 
-    for (int i = 2; i < argc; i += 2) {
+    for (int i = 2; i < argc; i++) {
         if (strcmp("-m", argv[i]) == 0) {
             mem_limit = std::stol(argv[i + 1]) * MiB;
         } else if (strcmp("-s", argv[i]) == 0) {
             data_size = std::stol(argv[i + 1]) * MiB;
+        } else if (strcmp("-o", argv[i]) == 0) {
+            optimized = true;
         }
     }
 
@@ -59,6 +66,7 @@ int main(int argc, char** argv) {
     std::cout << "Buffer size:  " << data_size / MiB << " MiB, 3 buffers in total\n";
     if (3 * data_size > mem_limit) {
         std::cout << "=> Memory over-subscription enabled\n";
+        std::cout << "   Over-subscription optimizations " << (optimized ? "enabled" : "disabled") << "\n";
     } else {
         std::cout << "=> Memory over-subscription disabled\n";
     }
