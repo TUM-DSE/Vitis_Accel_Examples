@@ -15,6 +15,7 @@
 */
 
 #include "xcl2.hpp"
+#include <CL/cl2.hpp>
 #include <climits>
 #include <cmath>
 #include <cassert>
@@ -33,7 +34,8 @@ constexpr size_t MEM_LIMIT = SIZE_MAX;
 // simulate memory over-subscription. Overridden by -s option.
 constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
 // Whether data transfer and kernel execution should be overlapped where
-// possible by having 2 chunks instead of 1 per buffer in FPGA memory
+// possible by having 2 chunks instead of 1 per buffer in FPGA memory.
+// Overridden by -o option.
 constexpr bool OPTIMIZED = false;
 
 int main(int argc, char** argv) {
@@ -164,8 +166,60 @@ int main(int argc, char** argv) {
 
     if (oversub && optimized) {
         for (int i = 0; i < iterations; i++) {
-            std::cerr << "Optimized over-subscription not implemented yet\n";
-            exit(EXIT_FAILURE);
+            std::vector<cl::Event> events_to_fpga{};
+            std::vector<cl::Event> events_kernel{};
+            std::vector<cl::Event> events_to_host{};
+            std::vector<cl::Buffer> buffers_in1{};
+            std::vector<cl::Buffer> buffers_in2{};
+            std::vector<cl::Buffer> buffers_out{};
+
+            for (size_t i = 0; i < num_chunks; i++) {
+                size_t cur_chunk_size = chunk_size;
+                if (i == num_chunks - 1) {
+                    cur_chunk_size = last_chunk_size;
+                }
+
+                auto buf_offset = i * chunk_size / sizeof(int);
+
+                OCL_CHECK(err, cl::Buffer buffer_in1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
+                    source_in1.data() + buf_offset, &err));
+                OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
+                    source_in2.data() + buf_offset, &err));
+                OCL_CHECK(err, cl::Buffer buffer_out(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, cur_chunk_size,
+                    source_hw_results.data() + buf_offset, &err));
+
+                buffers_in1.push_back(buffer_in1);
+                buffers_in2.push_back(buffer_in2);
+                buffers_out.push_back(buffer_out);
+
+                int nargs = 0;
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffers_in1[i]));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffers_in2[i]));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffers_out[i]));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)cur_chunk_size));
+
+                events_to_fpga.push_back(cl::Event{});
+                events_kernel.push_back(cl::Event{});
+                events_to_host.push_back(cl::Event{});
+
+                std::vector<cl::Event> wait_to_fpga{};
+                if (i > 0) {
+                  // Transfer to FPGA waits for previous kernel execution
+                  // because this buffer takes the slot previously used by the
+                  // input data of the previous kernel
+                  wait_to_fpga.push_back(events_kernel[i - 1]);
+                }
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffers_in1[i], buffers_in2[i]}, 0, &wait_to_fpga, &events_to_fpga[i]));
+
+                // Kernel waits for its input data
+                std::vector<cl::Event> wait_kernel{events_to_fpga[i]};
+                OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, &wait_kernel, &events_kernel[i]));
+
+                // Transfer to host waits for current kernel
+                std::vector<cl::Event> wait_to_host{events_kernel[i]};
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffers_out[i]}, CL_MIGRATE_MEM_OBJECT_HOST, &wait_to_host, &events_to_host[i]));
+            }
+            q.finish();
         }
     } else {
         // No over-subscription or unoptimized over-subscription
