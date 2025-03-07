@@ -28,10 +28,10 @@ constexpr size_t MiB = 1024 * 1024;
 constexpr size_t ALIGNMENT = 4096;
 // Artificial limit for available FPGA memory, overridden by -m option
 constexpr size_t MEM_LIMIT = SIZE_MAX;
-// DATA_SIZE should be multiple of 64 as kernel code is using int16 vector
-// datatype to read the operands from global memory 16 ints at a time. We aim
-// for the 2 input buffers and the output buffer to not fit into MEM_LIMIT to
-// simulate memory over-subscription. Overridden by -s option.
+// DATA_SIZE in bytes should be multiple of 64 as kernel code is using int16
+// vector datatype to read the operands from global memory 16 ints at a time. We
+// aim for the 2 input buffers and the output buffer to not fit into MEM_LIMIT
+// to simulate memory over-subscription. Overridden by -s option.
 constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
 // Whether data transfer and kernel execution should be overlapped where
 // possible by having 2 chunks instead of 1 per buffer in FPGA memory.
@@ -106,6 +106,7 @@ int main(int argc, char** argv) {
         auto device = devices[i];
         // Creating Context and Command Queue for selected Device
         OCL_CHECK(err, context = cl::Context(device, nullptr, nullptr, nullptr, &err));
+        // OCL_CHECK(err, q = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &err));
         OCL_CHECK(err, q = cl::CommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE | CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err));
 
         std::cout << "Trying to program device[" << i << "]: " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
@@ -170,6 +171,8 @@ int main(int argc, char** argv) {
             cl::Buffer buffer_in2[2];
             cl::Buffer buffer_out[2];
 
+            start_time = std::chrono::high_resolution_clock::now();
+
             for (size_t i = 0; i < num_chunks + 2; i++) {
                 // Send input data of chunk i
                 if (i < num_chunks) {
@@ -182,6 +185,10 @@ int main(int argc, char** argv) {
 
                     OCL_CHECK(err, buffer_in1[buf_index] = cl::Buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size, source_in1.data() + buf_offset, &err));
                     OCL_CHECK(err, buffer_in2[buf_index] = cl::Buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size, source_in2.data() + buf_offset, &err));
+
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(0, buffer_in1[buf_index]));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(1, buffer_in2[buf_index]));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(3, (int)(cur_chunk_size * sizeof(int))));
 
                     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[buf_index], buffer_in2[buf_index]}, 0));
                 }
@@ -201,7 +208,7 @@ int main(int argc, char** argv) {
                     OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1[buf_index]));
                     OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in2[buf_index]));
                     OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_out[buf_index]));
-                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)cur_chunk_size));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)(cur_chunk_size * sizeof(int))));
                     OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add));
                 }
 
@@ -213,6 +220,10 @@ int main(int argc, char** argv) {
 
                 q.finish();
             }
+
+            end_time = std::chrono::high_resolution_clock::now();
+            duration = std::chrono::duration<double>(end_time - start_time);
+            nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
         }
     } else {
         // No over-subscription or unoptimized over-subscription
@@ -237,7 +248,7 @@ int main(int argc, char** argv) {
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1));
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in2));
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_output));
-                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)cur_chunk_size));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)(cur_chunk_size * sizeof(int))));
 
                 // This is required for proper time measurements in Proteus. We add it here
                 // as well to have the same host code for Proteus and native.
