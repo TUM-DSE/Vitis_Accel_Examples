@@ -188,7 +188,7 @@ int main(int argc, char** argv) {
 
                     OCL_CHECK(err, err = krnl_vector_add.setArg(0, buffer_in1[buf_index]));
                     OCL_CHECK(err, err = krnl_vector_add.setArg(1, buffer_in2[buf_index]));
-                    OCL_CHECK(err, err = krnl_vector_add.setArg(3, (int)(cur_chunk_size * sizeof(int))));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(3, (int)(cur_chunk_size / sizeof(int))));
 
                     OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[buf_index], buffer_in2[buf_index]}, 0));
                 }
@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
                     OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1[buf_index]));
                     OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in2[buf_index]));
                     OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_out[buf_index]));
-                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)(cur_chunk_size * sizeof(int))));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)(cur_chunk_size / sizeof(int))));
                     OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add));
                 }
 
@@ -248,7 +248,7 @@ int main(int argc, char** argv) {
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1));
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in2));
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_output));
-                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)(cur_chunk_size * sizeof(int))));
+                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)(cur_chunk_size / sizeof(int))));
 
                 // This is required for proper time measurements in Proteus. We add it here
                 // as well to have the same host code for Proteus and native.
