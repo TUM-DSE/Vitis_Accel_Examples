@@ -166,60 +166,53 @@ int main(int argc, char** argv) {
 
     if (oversub && optimized) {
         for (int i = 0; i < iterations; i++) {
-            std::vector<cl::Event> events_to_fpga{};
-            std::vector<cl::Event> events_kernel{};
-            std::vector<cl::Event> events_to_host{};
-            std::vector<cl::Buffer> buffers_in1{};
-            std::vector<cl::Buffer> buffers_in2{};
-            std::vector<cl::Buffer> buffers_out{};
+            cl::Buffer buffer_in1[2];
+            cl::Buffer buffer_in2[2];
+            cl::Buffer buffer_out[2];
 
-            for (size_t i = 0; i < num_chunks; i++) {
-                size_t cur_chunk_size = chunk_size;
-                if (i == num_chunks - 1) {
-                    cur_chunk_size = last_chunk_size;
+            for (size_t i = 0; i < num_chunks + 2; i++) {
+                // Send input data of chunk i
+                if (i < num_chunks) {
+                    size_t cur_chunk_size = chunk_size;
+                    if (i == num_chunks - 1) {
+                        cur_chunk_size = last_chunk_size;
+                    }
+                    auto buf_offset = i * chunk_size / sizeof(int);
+                    auto buf_index = i % 2;
+
+                    OCL_CHECK(err, buffer_in1[buf_index] = cl::Buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size, source_in1.data() + buf_offset, &err));
+                    OCL_CHECK(err, buffer_in2[buf_index] = cl::Buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size, source_in2.data() + buf_offset, &err));
+
+                    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[buf_index], buffer_in2[buf_index]}, 0));
                 }
 
-                auto buf_offset = i * chunk_size / sizeof(int);
+                // Execute kernel of chunk i - 1
+                if (i > 0 && i < num_chunks + 1) {
+                    size_t cur_chunk_size = chunk_size;
+                    if (i - 1 == num_chunks - 1) {
+                        cur_chunk_size = last_chunk_size;
+                    }
+                    auto buf_offset = (i - 1) * chunk_size / sizeof(int);
+                    auto buf_index = (i - 1) % 2;
 
-                OCL_CHECK(err, cl::Buffer buffer_in1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                    source_in1.data() + buf_offset, &err));
-                OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                    source_in2.data() + buf_offset, &err));
-                OCL_CHECK(err, cl::Buffer buffer_out(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, cur_chunk_size,
-                    source_hw_results.data() + buf_offset, &err));
+                    OCL_CHECK(err, buffer_out[buf_index] = cl::Buffer(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, cur_chunk_size, source_hw_results.data() + buf_offset, &err));
 
-                buffers_in1.push_back(buffer_in1);
-                buffers_in2.push_back(buffer_in2);
-                buffers_out.push_back(buffer_out);
-
-                int nargs = 0;
-                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffers_in1[i]));
-                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffers_in2[i]));
-                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffers_out[i]));
-                OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)cur_chunk_size));
-
-                events_to_fpga.push_back(cl::Event{});
-                events_kernel.push_back(cl::Event{});
-                events_to_host.push_back(cl::Event{});
-
-                std::vector<cl::Event> wait_to_fpga{};
-                if (i > 0) {
-                  // Transfer to FPGA waits for previous kernel execution
-                  // because this buffer takes the slot previously used by the
-                  // input data of the previous kernel
-                  wait_to_fpga.push_back(events_kernel[i - 1]);
+                    int nargs = 0;
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1[buf_index]));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in2[buf_index]));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_out[buf_index]));
+                    OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, (int)cur_chunk_size));
+                    OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add));
                 }
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffers_in1[i], buffers_in2[i]}, 0, &wait_to_fpga, &events_to_fpga[i]));
 
-                // Kernel waits for its input data
-                std::vector<cl::Event> wait_kernel{events_to_fpga[i]};
-                OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, &wait_kernel, &events_kernel[i]));
+                // Send output data of chunk i - 2
+                if (i > 1) {
+                    auto buf_index = (i - 2) % 2;
+                    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[buf_index]}, CL_MIGRATE_MEM_OBJECT_HOST));
+                }
 
-                // Transfer to host waits for current kernel
-                std::vector<cl::Event> wait_to_host{events_kernel[i]};
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffers_out[i]}, CL_MIGRATE_MEM_OBJECT_HOST, &wait_to_host, &events_to_host[i]));
+                q.finish();
             }
-            q.finish();
         }
     } else {
         // No over-subscription or unoptimized over-subscription
