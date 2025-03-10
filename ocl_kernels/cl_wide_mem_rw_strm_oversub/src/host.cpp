@@ -38,6 +38,8 @@ constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this 
 // Overridden by -o option.
 constexpr bool OPTIMIZED = false;
 
+// An event callback function that prints the operations performed by the OpenCL
+// runtime.
 void event_cb(cl_event event1, cl_int cmd_status, void *data) {
     cl_int err;
     cl_command_type command;
@@ -87,6 +89,7 @@ void event_cb(cl_event event1, cl_int cmd_status, void *data) {
     fflush(stdout);
 }
 
+// Sets the callback for a particular event
 void set_callback(cl::Event event, const char *queue_name) {
     cl_int err;
     OCL_CHECK(err, err = event.setCallback(CL_COMPLETE, event_cb, (void *)queue_name));
@@ -228,6 +231,8 @@ int main(int argc, char **argv) {
     uint64_t nstime_data_to_host_ocl = 0;
 
     if (oversub && optimized) {
+        // Overlapping data transer + kernel execution, based on this:
+        // https://github.com/Xilinx/SDAccel_Examples/blob/master/getting_started/host/overlap_c/src/host.cpp
         for (int i = 0; i < iterations; i++) {
             std::vector<cl::Event> kernel_events(2);
             std::vector<cl::Event> to_fpga_events(2);
@@ -236,31 +241,31 @@ int main(int argc, char **argv) {
             cl::Buffer buffer_in2[2];
             cl::Buffer buffer_out[2];
 
+            start_time = std::chrono::high_resolution_clock::now();
+
             for (size_t i = 0; i < num_chunks; i++) {
                 int flag = i % 2;
 
                 if (i >= 2) {
                     OCL_CHECK(err, err = to_host_events[flag].wait());
 
-                    for (int j = 0; j < 1; j++) {
-                        OCL_CHECK(err, err = to_fpga_events[j].getProfilingInfo<uint64_t>(
-                                           CL_PROFILING_COMMAND_START, &nstimestart));
-                        OCL_CHECK(err, err = to_fpga_events[j].getProfilingInfo<uint64_t>(
-                                           CL_PROFILING_COMMAND_END, &nstimeend));
-                        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+                    OCL_CHECK(err, err = to_fpga_events[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_START, &nstimestart));
+                    OCL_CHECK(err, err = to_fpga_events[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_END, &nstimeend));
+                    nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
-                        OCL_CHECK(err, err = kernel_events[j].getProfilingInfo<uint64_t>(
-                                           CL_PROFILING_COMMAND_START, &nstimestart));
-                        OCL_CHECK(err, err = kernel_events[j].getProfilingInfo<uint64_t>(
-                                           CL_PROFILING_COMMAND_END, &nstimeend));
-                        nstime_kernel_ocl += nstimeend - nstimestart;
+                    OCL_CHECK(err, err = kernel_events[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_START, &nstimestart));
+                    OCL_CHECK(err, err = kernel_events[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_END, &nstimeend));
+                    nstime_kernel_ocl += nstimeend - nstimestart;
 
-                        OCL_CHECK(err, err = to_host_events[j].getProfilingInfo<uint64_t>(
-                                           CL_PROFILING_COMMAND_START, &nstimestart));
-                        OCL_CHECK(err, err = to_host_events[j].getProfilingInfo<uint64_t>(
-                                           CL_PROFILING_COMMAND_END, &nstimeend));
-                        nstime_data_to_host_ocl += nstimeend - nstimestart;
-                    }
+                    OCL_CHECK(err, err = to_host_events[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_START, &nstimestart));
+                    OCL_CHECK(err, err = to_host_events[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_END, &nstimeend));
+                    nstime_data_to_host_ocl += nstimeend - nstimestart;
                 }
 
                 size_t cur_chunk_size = chunk_size;
@@ -286,31 +291,28 @@ int main(int argc, char **argv) {
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++,
                                                             (int)(cur_chunk_size / sizeof(int))));
 
-                start_time = std::chrono::high_resolution_clock::now();
-
                 OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
                                    {buffer_in1[flag], buffer_in2[flag]}, 0 /* 0 means from host*/,
                                    nullptr, &to_fpga_events[flag]));
-                set_callback(to_fpga_events[flag], "ooo_queue");
+                // set_callback(to_fpga_events[flag], "ooo_queue");
 
                 std::vector<cl::Event> wait_kernel{to_fpga_events[flag]};
                 OCL_CHECK(err,
                           err = q.enqueueTask(krnl_vector_add, &wait_kernel, &kernel_events[flag]));
-                set_callback(kernel_events[flag], "ooo_queue");
+                // set_callback(kernel_events[flag], "ooo_queue");
 
                 std::vector<cl::Event> wait_to_host{kernel_events[flag]};
                 OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
                                    {buffer_out[flag]}, CL_MIGRATE_MEM_OBJECT_HOST, &wait_to_host,
                                    &to_host_events[flag]));
-                set_callback(to_host_events[flag], "ooo_queue");
-
-                OCL_CHECK(err, err = to_host_events[flag].wait());
-
-                end_time = std::chrono::high_resolution_clock::now();
-                duration = std::chrono::duration<double>(end_time - start_time);
-                nstime_cpu +=
-                    std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+                // set_callback(to_host_events[flag], "ooo_queue");
             }
+
+            q.finish();
+
+            end_time = std::chrono::high_resolution_clock::now();
+            duration = std::chrono::duration<double>(end_time - start_time);
+            nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
         }
     } else {
         // No over-subscription or unoptimized over-subscription
