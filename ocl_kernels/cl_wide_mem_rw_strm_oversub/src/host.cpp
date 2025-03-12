@@ -389,9 +389,11 @@ int main(int argc, char **argv) {
 
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in
     // seconds
-    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,"
-                 "data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
-    std::cout << "cl_wide_mem_rw," << data_size * 2 << "," << data_size << "," << iterations << ","
+    std::cout
+        << "app_name,num_chunks,chunk_size,kernel_input_data_size,kernel_output_data_size,"
+           "iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
+    std::cout << "cl_wide_mem_rw," << num_chunks << "," << chunk_size << "," << data_size * 2 << ","
+              << data_size << "," << iterations << ","
               << std::setprecision(std::numeric_limits<double>::digits10)
               << nstime_cpu / (double)1'000'000'000 << ","
               << nstime_data_to_fpga_ocl / (double)1'000'000'000 << ","
