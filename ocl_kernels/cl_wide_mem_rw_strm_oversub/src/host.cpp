@@ -241,6 +241,8 @@ int main(int argc, char **argv) {
             cl::Buffer buffer_in2[2];
             cl::Buffer buffer_out[2];
 
+            q.finish();
+
             start_time = std::chrono::high_resolution_clock::now();
 
             for (size_t i = 0; i < num_chunks; i++) {
