@@ -34,7 +34,7 @@ constexpr size_t MEM_LIMIT = SIZE_MAX;
 // to simulate memory over-subscription. Overridden by -s option.
 constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
 // Number of iterations the whole kernel execution is repeated
-constexpr size_t ITERATIONS = 10;
+constexpr size_t ITERATIONS = 1;
 // Whether data transfer and kernel execution should be overlapped where
 // possible by having 2 chunks instead of 1 per buffer in FPGA memory.
 // Overridden by -o option.
@@ -112,7 +112,8 @@ int main(int argc, char** argv) {
             << "  [-m <size>] On-FPGA memory limit in MiB. Default: " << MEM_LIMIT / MiB << "\n"
             << "  [-s <size>] Size per buffer in MiB. The application uses 3 buffers. Default: "
             << DATA_SIZE / MiB << "\n"
-            << "  [-i]        Number of iterations the whole kernel execution is repeated\n"
+            << "  [-i]        Number of iterations the whole kernel execution is repeated. "
+            << "Default: " << ITERATIONS << "\n"
             << "  [-o]        Enable over-subscription optimizations "
                "(overlapping data transfer and kernel execution)\n"
             << "  [-d]        Enable more efficient use of the 2 DDR channels "
