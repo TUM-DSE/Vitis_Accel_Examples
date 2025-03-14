@@ -33,6 +33,8 @@ constexpr size_t MEM_LIMIT = SIZE_MAX;
 // aim for the 2 input buffers and the output buffer to not fit into MEM_LIMIT
 // to simulate memory over-subscription. Overridden by -s option.
 constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this size * sizeof(int)
+// Number of iterations the whole kernel execution is repeated
+constexpr size_t ITERATIONS = 10;
 // Whether data transfer and kernel execution should be overlapped where
 // possible by having 2 chunks instead of 1 per buffer in FPGA memory.
 // Overridden by -o option.
@@ -48,15 +50,15 @@ constexpr bool DDR_OPT = false;
 
 // An event callback function that prints the operations performed by the OpenCL
 // runtime.
-void event_cb(cl_event event1, cl_int cmd_status, void *data) {
+void event_cb(cl_event event1, cl_int cmd_status, void* data) {
     cl_int err;
     cl_command_type command;
     cl::Event event(event1, true);
     OCL_CHECK(err, err = event.getInfo(CL_EVENT_COMMAND_TYPE, &command));
     cl_int status;
     OCL_CHECK(err, err = event.getInfo(CL_EVENT_COMMAND_EXECUTION_STATUS, &status));
-    const char *command_str;
-    const char *status_str;
+    const char* command_str;
+    const char* status_str;
     switch (command) {
     case CL_COMMAND_READ_BUFFER:
         command_str = "buffer read";
@@ -93,23 +95,24 @@ void event_cb(cl_event event1, cl_int cmd_status, void *data) {
         status_str = "Completed";
         break;
     }
-    printf("[%s]: %s %s\n", reinterpret_cast<char *>(data), status_str, command_str);
+    printf("[%s]: %s %s\n", reinterpret_cast<char*>(data), status_str, command_str);
     fflush(stdout);
 }
 
 // Sets the callback for a particular event
-void set_callback(cl::Event event, const char *queue_name) {
+void set_callback(cl::Event event, const char* queue_name) {
     cl_int err;
-    OCL_CHECK(err, err = event.setCallback(CL_COMPLETE, event_cb, (void *)queue_name));
+    OCL_CHECK(err, err = event.setCallback(CL_COMPLETE, event_cb, (void*)queue_name));
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     if (argc < 2 || strcmp("-h", argv[1]) == 0) {
         std::cout
             << "Usage: " << argv[0] << " <XCLBIN File>\n"
             << "  [-m <size>] On-FPGA memory limit in MiB. Default: " << MEM_LIMIT / MiB << "\n"
             << "  [-s <size>] Size per buffer in MiB. The application uses 3 buffers. Default: "
             << DATA_SIZE / MiB << "\n"
+            << "  [-i]        Number of iterations the whole kernel execution is repeated\n"
             << "  [-o]        Enable over-subscription optimizations "
                "(overlapping data transfer and kernel execution)\n"
             << "  [-d]        Enable more efficient use of the 2 DDR channels "
@@ -120,6 +123,7 @@ int main(int argc, char **argv) {
 
     size_t mem_limit = MEM_LIMIT;
     size_t data_size = DATA_SIZE;
+    size_t iterations = ITERATIONS;
     bool optimized = OPTIMIZED;
     bool ddr_opt = DDR_OPT;
     std::string binaryFile = argv[1];
@@ -129,6 +133,8 @@ int main(int argc, char **argv) {
             mem_limit = std::stol(argv[i + 1]) * MiB;
         } else if (strcmp("-s", argv[i]) == 0) {
             data_size = std::stol(argv[i + 1]) * MiB;
+        } else if (strcmp("-i", argv[i]) == 0) {
+            iterations = std::stol(argv[i + 1]);
         } else if (strcmp("-o", argv[i]) == 0) {
             optimized = true;
         } else if (strcmp("-d", argv[i]) == 0) {
@@ -236,7 +242,6 @@ int main(int argc, char **argv) {
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
     cl::Event event_data_to_host;
-    const int iterations = 1;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     std::chrono::duration<double> duration;
     int64_t nstime_cpu = 0;
@@ -247,15 +252,34 @@ int main(int argc, char **argv) {
     uint64_t nstime_data_to_host_ocl = 0;
 
     if (oversub && optimized) {
-        // Overlapping data transer + kernel execution, based on this:
+        // Overlapping data transfer + kernel execution, based on this:
         // https://github.com/Xilinx/SDAccel_Examples/blob/master/getting_started/host/overlap_c/src/host.cpp
-        for (int i = 0; i < iterations; i++) {
+        for (size_t i = 0; i < iterations; i++) {
             std::vector<cl::Event> kernel_events(2);
             std::vector<cl::Event> to_fpga_events(2);
             std::vector<cl::Event> to_host_events(2);
             cl::Buffer buffer_in1[2];
             cl::Buffer buffer_in2[2];
             cl::Buffer buffer_out[2];
+
+            cl_mem_ext_ptr_t buffer_in1_ext[2];
+            cl_mem_ext_ptr_t buffer_in2_ext[2];
+            cl_mem_ext_ptr_t buffer_out_ext[2];
+            buffer_in1_ext[0].param = 0;
+            buffer_in2_ext[0].param = 0;
+            buffer_out_ext[0].param = 0;
+            buffer_in1_ext[1].param = 0;
+            buffer_in2_ext[1].param = 0;
+            buffer_out_ext[1].param = 0;
+
+            // When DDR optimization is enabled, keep the buffers of two consecutive tasks on
+            // separate DDR banks
+            buffer_in1_ext[0].flags = pc_ddr[0];
+            buffer_in2_ext[0].flags = pc_ddr[0];
+            buffer_out_ext[0].flags = pc_ddr[0];
+            buffer_in1_ext[1].flags = pc_ddr[1];
+            buffer_in2_ext[1].flags = pc_ddr[1];
+            buffer_out_ext[1].flags = pc_ddr[1];
 
             q.finish();
 
@@ -292,15 +316,33 @@ int main(int argc, char **argv) {
                 }
                 auto buf_offset = i * chunk_size / sizeof(int);
 
+                // Without DDR optimization, don't assign memory banks
+                void* buffer_in1_data = source_in1.data() + buf_offset;
+                void* buffer_in2_data = source_in2.data() + buf_offset;
+                void* buffer_out_data = source_hw_results.data() + buf_offset;
+                int ext_flag = 0;
+
+                // With DDR optimization, use cl_mem_ext_ptr_t to assign memory banks
+                if (ddr_opt) {
+                    buffer_in1_ext[flag].obj = source_in1.data() + buf_offset;
+                    buffer_in2_ext[flag].obj = source_in2.data() + buf_offset;
+                    buffer_out_ext[flag].obj = source_hw_results.data() + buf_offset;
+
+                    ext_flag = CL_MEM_EXT_PTR_XILINX;
+                    buffer_in1_data = &buffer_in1_ext[flag];
+                    buffer_in2_data = &buffer_in2_ext[flag];
+                    buffer_out_data = &buffer_out_ext[flag];
+                }
+
                 OCL_CHECK(err, buffer_in1[flag] = cl::Buffer(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                                   source_in1.data() + buf_offset, &err));
+                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | ext_flag,
+                                   cur_chunk_size, buffer_in1_data, &err));
                 OCL_CHECK(err, buffer_in2[flag] = cl::Buffer(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                                   source_in2.data() + buf_offset, &err));
+                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | ext_flag,
+                                   cur_chunk_size, buffer_in2_data, &err));
                 OCL_CHECK(err, buffer_out[flag] = cl::Buffer(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, cur_chunk_size,
-                                   source_hw_results.data() + buf_offset, &err));
+                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY | ext_flag,
+                                   cur_chunk_size, buffer_out_data, &err));
 
                 int nargs = 0;
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++, buffer_in1[flag]));
@@ -334,7 +376,7 @@ int main(int argc, char **argv) {
         }
     } else {
         // No over-subscription or unoptimized over-subscription
-        for (int i = 0; i < iterations; i++) {
+        for (size_t i = 0; i < iterations; i++) {
             for (size_t i = 0; i < num_chunks; i++) {
                 size_t cur_chunk_size = chunk_size;
                 if (i == num_chunks - 1) {
