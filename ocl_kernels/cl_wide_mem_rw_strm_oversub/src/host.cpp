@@ -38,6 +38,14 @@ constexpr size_t DATA_SIZE = 32 * MiB; // 3 buffers (2 input, 1 output) of this 
 // Overridden by -o option.
 constexpr bool OPTIMIZED = false;
 
+// Number of available DDR channels
+constexpr int MAX_DDR_PC_COUNT = 2;
+// Used to select DDR channel for a specific buffer
+constexpr int pc_ddr[MAX_DDR_PC_COUNT] = {XCL_MEM_DDR_BANK0, XCL_MEM_DDR_BANK1};
+// Whether input and output buffers should be allocated on alternating DDR channels to improve
+// performance. Only available when optimization is enabled.
+constexpr bool DDR_OPT = false;
+
 // An event callback function that prints the operations performed by the OpenCL
 // runtime.
 void event_cb(cl_event event1, cl_int cmd_status, void *data) {
@@ -96,14 +104,16 @@ void set_callback(cl::Event event, const char *queue_name) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
+    if (argc < 2 || strcmp("-h", argv[1]) == 0) {
         std::cout
             << "Usage: " << argv[0] << " <XCLBIN File>\n"
             << "  [-m <size>] On-FPGA memory limit in MiB. Default: " << MEM_LIMIT / MiB << "\n"
             << "  [-s <size>] Size per buffer in MiB. The application uses 3 buffers. Default: "
             << DATA_SIZE / MiB << "\n"
-            << "  [-o]        Enable over-subscription optimizations (overlapping data transfer "
-               "and kernel execution)\n\n"
+            << "  [-o]        Enable over-subscription optimizations "
+               "(overlapping data transfer and kernel execution)\n"
+            << "  [-d]        Enable more efficient use of the 2 DDR channels "
+               "(only works in conjuction with -o, requires DDR bitstream)\n\n"
             << "Memory over-subscription is active when memory limit < 3 * buffer size\n";
         return EXIT_FAILURE;
     }
@@ -111,6 +121,7 @@ int main(int argc, char **argv) {
     size_t mem_limit = MEM_LIMIT;
     size_t data_size = DATA_SIZE;
     bool optimized = OPTIMIZED;
+    bool ddr_opt = DDR_OPT;
     std::string binaryFile = argv[1];
 
     for (int i = 2; i < argc; i++) {
@@ -120,6 +131,8 @@ int main(int argc, char **argv) {
             data_size = std::stol(argv[i + 1]) * MiB;
         } else if (strcmp("-o", argv[i]) == 0) {
             optimized = true;
+        } else if (strcmp("-d", argv[i]) == 0) {
+            ddr_opt = true;
         }
     }
 
@@ -129,11 +142,14 @@ int main(int argc, char **argv) {
     std::cout << "Memory limit: " << mem_limit / MiB << " MiB\n";
     std::cout << "Buffer size:  " << data_size / MiB << " MiB, 3 buffers in total\n";
     if (oversub) {
-        std::cout << "=> Memory over-subscription enabled\n";
-        std::cout << "   Over-subscription optimizations " << (optimized ? "enabled" : "disabled")
+        std::cout << "=> Memory over-subscription enabled\n"
+                  << "   Over-subscription optimizations " << (optimized ? "enabled" : "disabled")
+                  << "\n"
+                  << "   DDR optimizations " << (optimized && ddr_opt ? "enabled" : "disabled")
                   << "\n";
+
     } else {
-        std::cout << "=> Memory over-subscription disabled\n";
+        std::cout << "=> Memory over-subscription disabled, no optimizations\n";
     }
 
     // Allocate Memory in Host Memory
