@@ -77,9 +77,10 @@ int main(int argc, char** argv) {
     // and will return the pointer to file buffer.
     TIMER_START(1);
     cl::Program::Binaries *bins;
+    std::vector<unsigned char> fileBuf;
     {
       std::string binaryFile = argv[1];
-      auto fileBuf = xcl::read_binary_file(binaryFile);
+      fileBuf = xcl::read_binary_file(binaryFile);
       bins = new cl::Program::Binaries({{fileBuf.data(), fileBuf.size()}});
       // TIMER_STOP_ID(1);
       // TIMER_START(10); // end total time
