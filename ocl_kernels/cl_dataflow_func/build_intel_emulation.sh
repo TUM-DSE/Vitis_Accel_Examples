@@ -1,3 +1,3 @@
 #!/bin/bash
 
-aoc -march=emulator -v src/adder_intel.cl -o dataflow_func.aocx
+aoc -march=emulator -v -g0 src/adder_intel.cl -o dataflow_func.aocx

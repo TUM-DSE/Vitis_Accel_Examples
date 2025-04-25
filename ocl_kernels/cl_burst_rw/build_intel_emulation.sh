@@ -1,3 +1,3 @@
 #!/bin/bash
 
-aoc -march=emulator -v src/vadd_intel.cl -o burst_rw.aocx
+aoc -march=emulator -v -g0 src/vadd_intel.cl -o burst_rw.aocx
