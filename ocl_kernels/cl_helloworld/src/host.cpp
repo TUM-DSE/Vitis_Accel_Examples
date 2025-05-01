@@ -47,7 +47,8 @@ int main(int argc, char** argv) {
     vector<int, aligned_allocator<int> > source_results(DATA_SIZE);
 
     // The get_xil_devices will return vector of Xilinx Devices
-    auto devices = xcl::get_xil_devices();
+    // auto devices = xcl::get_xil_devices();
+    auto devices = xcl::get_intel_devices();
 
     // read_binary_file() is a utility API which will load the binaryFile
     // and will return the pointer to file buffer.
@@ -62,6 +63,16 @@ int main(int argc, char** argv) {
 
         std::cout << "Trying to program device[" << i << "]: " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
         cl::Program program(context, {device}, bins, nullptr, &err);
+        if (err == CL_SUCCESS) {
+
+            err = ::clBuildProgram(
+                program(),
+                0,
+                NULL,
+                NULL,
+                NULL,
+                NULL);
+        }
         if (err != CL_SUCCESS) {
             std::cout << "Failed to program device[" << i << "] with xclbin file!\n";
         } else {
