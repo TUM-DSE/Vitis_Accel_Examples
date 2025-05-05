@@ -175,6 +175,10 @@ int main(int argc, char** argv) {
     uint64_t nstime_data_to_fpga_ocl = 0;
     uint64_t nstime_data_to_host_ocl = 0;
 
+    // This is required for proper time measurements in Proteus. We add it here
+    // as well to have the same host code for Proteus and native.
+    q.finish();
+
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations / 2; i++) {
@@ -212,9 +216,11 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < iterations / 2; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_d, buffer_e}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(matmul_partition_kernel, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_f}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
-        q.finish();
+        OCL_CHECK(err, err = q.finish());
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
@@ -236,9 +242,10 @@ int main(int argc, char** argv) {
     verify(gold2, F);
 
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
-    std::cout << "app_name,kernel_input_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
+    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
     std::cout << "cl_partition_cyclicblock,"
               << array_size_bytes * 2 << ","
+              << array_size_bytes << ","
               << iterations << ","
               << std::setprecision(std::numeric_limits<double>::digits10)
               << nstime_cpu / (double)1'000'000'000 << ","

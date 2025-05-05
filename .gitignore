@@ -31,3 +31,5 @@ _x*
 *.aocr
 *.aocx
 .ipcache/
+.cache/
+compile_commands.json

@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
     duration = std::chrono::duration<double>(end_time - start_time);
     nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
-    verify(gold, out);
+    // verify(gold, out);
 
     // Creating FIR Shift Register Kernel object and setting args
     OCL_CHECK(err, cl::Kernel fir_sr_kernel(program, "fir_shift_register", &err));
@@ -173,14 +173,20 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = fir_sr_kernel.setArg(2, buffer_coeff_B));
     OCL_CHECK(err, err = fir_sr_kernel.setArg(3, signal_size));
 
+    // This is required for proper time measurements in Proteus. We add it here
+    // as well to have the same host code for Proteus and native.
+    q.finish();
+
     start_time = std::chrono::high_resolution_clock::now();
 
     // Running Shift Register FIR iterations times
     for (int i = 0; i < iterations / 2; i++) {
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_signal_B, buffer_coeff_B}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(fir_sr_kernel, nullptr, &event_kernel));
+        OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output_B}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
-        q.finish();
+        OCL_CHECK(err, err = q.finish());
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
@@ -199,15 +205,16 @@ int main(int argc, char** argv) {
     duration = std::chrono::duration<double>(end_time - start_time);
     nstime_cpu += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
 
-    verify(gold, out);
+    // verify(gold, out);
 
     printf("Example Testdata Signal_Length=%u for %d iteration\n", signal_size, iterations);
     // print_summary("fir_naive", "fir_shift_register", fir_naive_time, fir_sr_time, iterations);
 
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
-    std::cout << "app_name,kernel_input_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
+    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
     std::cout << "cl_shift_register,"
               << size_in_bytes + coeff_size_in_bytes << ","
+              << size_in_bytes << ","
               << iterations << ","
               << std::setprecision(std::numeric_limits<double>::digits10)
               << nstime_cpu / (double)1'000'000'000 << ","

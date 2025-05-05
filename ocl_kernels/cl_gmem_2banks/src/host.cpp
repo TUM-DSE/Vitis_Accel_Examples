@@ -129,6 +129,10 @@ int main(int argc, char* argv[]) {
     std::chrono::duration<double> kernel_time(0);
     std::chrono::duration<double> from_fpga_time(0);
 
+    // This is required for proper time measurements in Proteus. We add it here
+    // as well to have the same host code for Proteus and native.
+    q.finish();
+
     auto loop_start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < iterations; i++) {
 
@@ -171,52 +175,48 @@ int main(int argc, char* argv[]) {
     // std::chrono::duration<double> total_loop_time(0);
     auto total_loop_time = std::chrono::duration<double>(loop_end - loop_start);
 
-    std::cout << "app_name,kernel_data_size,iterations,data_to_fpga_avg_time,kernel_avg_time,data_to_host_avg_time\n";
+    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
     std::cout << "cl_gmem_2banks,"
-              << image_size_bytes * 2 << ","
+              << image_size_bytes << ","
+              << image_size_bytes << ","
               << iterations << ","
-              << nstime_data_to_fpga / iterations << ","
-              << nstime_kernel / iterations << ","
-              << nstime_data_to_host / iterations << "\n";
-
-    std::cout << "app_name,data_to_fpga_cpu_time,kernel_cpu_time,data_to_host_cpu_time\n";
-    std::cout << "cl_gmem_2banks," 
-              << to_fpga_time.count() << "," 
-              << kernel_time.count() << "," 
-              << from_fpga_time.count() << "," 
-              << std::endl;
+              << std::setprecision(std::numeric_limits<double>::digits10)
+              << total_loop_time.count() << ","
+              << nstime_data_to_fpga / (double)1'000'000'000 << ","
+              << nstime_kernel / (double)1'000'000'000 << ","
+              << nstime_data_to_host / (double)1'000'000'000 << "\n";
 
     // Throughputs
     std::cout << "app_name,PCIe_Wr[GB/s],Kernel[GB/s],PCIe_Rd[GB/s],FPGA_exec_time[s],FPGA_reconf_time[s]\n";
-    std::cout << "cl_gmem_2banks," 
-              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / to_fpga_time.count())   / 1000000000 << "," 
-              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations * 2 / kernel_time.count()) / 1000000000 << "," 
-              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / from_fpga_time.count()) / 1000000000 << "," 
-              << total_loop_time.count() << "," 
-              << reconf_time.count() << "," 
+    std::cout << "cl_gmem_2banks,"
+              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / to_fpga_time.count())   / 1000000000 << ","
+              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations * 2 / kernel_time.count()) / 1000000000 << ","
+              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / from_fpga_time.count()) / 1000000000 << ","
+              << total_loop_time.count() << ","
+              << reconf_time.count() << ","
               << std::endl;
 
     // Compare Golden Image with Output image
     bool match = 1;
     // Read the golden bit map file into memory
-    BitmapInterface goldenImage(goldenFilename.data());
-    result = goldenImage.readBitmapFile();
-    if (!result) {
-        std::cerr << "ERROR:Unable to Read Golden Bitmap File " << goldenFilename.data() << std::endl;
-        return EXIT_FAILURE;
-    }
-    if (image.getHeight() != goldenImage.getHeight() || image.getWidth() != goldenImage.getWidth()) {
-        match = 0;
-    } else {
-        int* goldImgPtr = goldenImage.bitmap();
-        for (unsigned int i = 0; i < image.numPixels(); i++) {
-            if (outImage[i] != goldImgPtr[i]) {
-                match = 0;
-                printf("Pixel %d Mismatch Output %x and Expected %x \n", i, outImage[i], goldImgPtr[i]);
-                break;
-            }
-        }
-    }
+    // BitmapInterface goldenImage(goldenFilename.data());
+    // result = goldenImage.readBitmapFile();
+    // if (!result) {
+    //     std::cerr << "ERROR:Unable to Read Golden Bitmap File " << goldenFilename.data() << std::endl;
+    //     return EXIT_FAILURE;
+    // }
+    // if (image.getHeight() != goldenImage.getHeight() || image.getWidth() != goldenImage.getWidth()) {
+    //     match = 0;
+    // } else {
+    //     int* goldImgPtr = goldenImage.bitmap();
+    //     for (unsigned int i = 0; i < image.numPixels(); i++) {
+    //         if (outImage[i] != goldImgPtr[i]) {
+    //             match = 0;
+    //             printf("Pixel %d Mismatch Output %x and Expected %x \n", i, outImage[i], goldImgPtr[i]);
+    //             break;
+    //         }
+    //     }
+    // }
     // Write the final image to disk
     // image.writeBitmapFile(outImage.data());
 

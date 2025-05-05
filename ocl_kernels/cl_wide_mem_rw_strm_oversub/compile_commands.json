@@ -1,0 +1,42 @@
+[
+    {
+        "arguments": [
+            "g++",
+            "-c",
+            "-I/opt/xilinx/xrt/include",
+            "-I/include",
+            "-Wall",
+            "-O0",
+            "-g",
+            "-std=c++1y",
+            "-I/home/felix/Projects/vitis-accel-examples/common/includes/xcl2",
+            "-fmessage-length=0",
+            "-pthread",
+            "-o",
+            "cl_wide_mem_rw",
+            "../../common/includes/xcl2/xcl2.cpp"
+        ],
+        "directory": "/home/felix/Projects/vitis-accel-examples/ocl_kernels/cl_wide_mem_rw_strm_oversub",
+        "file": "../../common/includes/xcl2/xcl2.cpp"
+    },
+    {
+        "arguments": [
+            "g++",
+            "-c",
+            "-I/opt/xilinx/xrt/include",
+            "-I/include",
+            "-Wall",
+            "-O0",
+            "-g",
+            "-std=c++1y",
+            "-I/home/felix/Projects/vitis-accel-examples/common/includes/xcl2",
+            "-fmessage-length=0",
+            "-pthread",
+            "-o",
+            "cl_wide_mem_rw",
+            "src/host.cpp"
+        ],
+        "directory": "/home/felix/Projects/vitis-accel-examples/ocl_kernels/cl_wide_mem_rw_strm_oversub",
+        "file": "src/host.cpp"
+    }
+]
