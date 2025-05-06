@@ -33,3 +33,16 @@ _x*
 .ipcache/
 .cache/
 compile_commands.json
+
+.run/
+device_trace_0.csv
+device_trace_1.csv
+opencl_trace.csv
+summary.csv
+u280_ddr_*/
+u280_hbm_*/
+u50_hbm_*/
+*_reports/
+xrt.run_summary
+
+
