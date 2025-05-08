@@ -170,6 +170,16 @@ int main(int argc, char** argv) {
     OCL_CHECK(err, err = krnl_vector_add.setArg(3, size));
     TIMER_STOP_ID(5);
 
+    cl::Event event_kernel;
+    cl::Event event_data_to_fpga_1;
+    cl::Event event_data_to_fpga_2;
+    cl::Event event_data_to_host;
+    uint64_t nstime_kernel_ocl = 0;
+    uint64_t nstime_data_to_fpga_ocl = 0;
+    uint64_t nstime_data_to_host_ocl = 0;
+    uint64_t nstimestart = 0;
+    uint64_t nstimeend = 0;
+
     TIMER_START(11);
     // for(auto loop=0; loop < 100; loop++)
     {
@@ -177,13 +187,13 @@ int main(int argc, char** argv) {
     // TIMER_START(6);
     TIMER_START(8);
     // OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/));
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1}, 0 /* 0 means from host*/));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga_1));
     q.finish();
     TIMER_STOP_ID(8);
     // TIMER_STOP_ID(6);
 
     TIMER_START(6);
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in2}, 0 /* 0 means from host*/));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga_2));
     q.finish();
     TIMER_STOP_ID(6);
 
@@ -192,13 +202,13 @@ int main(int argc, char** argv) {
     // recommended
     // to always use enqueueTask() for invoking HLS kernel
     TIMER_START(7);
-    OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add));
+    OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
     q.finish();
     TIMER_STOP_ID(7);
 
     // Copy Result from Device Global Memory to Host Local Memory
     TIMER_START(6);
-    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST));
+    OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
     q.finish();
     TIMER_STOP_ID(6);
     // OPENCL HOST CODE AREA END
@@ -212,6 +222,21 @@ int main(int argc, char** argv) {
       q.finish();
       TIMER_STOP_ID(10);
     }
+
+    OCL_CHECK(err, err = event_data_to_fpga_1.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+    OCL_CHECK(err, err = event_data_to_fpga_1.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+    nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+    OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+    OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+    nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+    OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+    OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+    nstime_kernel_ocl += nstimeend - nstimestart;
+
+    OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+    OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+    nstime_data_to_host_ocl += nstimeend - nstimestart;
 
     // Compare the results of the Device to the simulation
     bool match = true;
@@ -231,12 +256,17 @@ int main(int argc, char** argv) {
     TIMER_STOP_ID(9); // end total time
     TIMER_STOP_ID(0); // end total time
 
+    // Times to milliseconds from nanoseconds
+    double stime_data_to_fpga_ocl = nstime_data_to_fpga_ocl / (double)1'000'000;
+    double stime_kernel_ocl = nstime_kernel_ocl / (double)1'000'000;
+    double stime_data_to_host_ocl = nstime_data_to_host_ocl / (double)1'000'000;
+
     printf("csv (times in ms, everything buffer related is per buffer):\n");
-    printf("buf_size,program_bs,kernel_alloc,kernel_setarg,kernel_enqueue,buf_alloc,init_transfer,transfer,finish,total\n");
-    printf("%zu,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
+    printf("buf_size,program_bs,kernel_alloc,kernel_setarg,kernel_enqueue,buf_alloc,init_transfer,transfer,finish,total,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n");
+    printf("%zu,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f\n",
            vector_size_bytes,TIMER_REPORT_MS(2),TIMER_REPORT_MS(3),TIMER_REPORT_MS(5),
            TIMER_REPORT_MS(7),TIMER_REPORT_MS(4) / 3,TIMER_REPORT_MS(8),TIMER_REPORT_MS(6) / 2,
-           TIMER_REPORT_MS(10),TIMER_REPORT_MS(0));
+           TIMER_REPORT_MS(10),TIMER_REPORT_MS(0), stime_data_to_fpga_ocl, stime_kernel_ocl, stime_data_to_host_ocl);
 
     // printf("------------------------------------------------------\n");
     // printf("  Performance Summary                                 \n");
