@@ -17,7 +17,7 @@ endif
 ############################## Setting up Project Variables ##############################
 # Points to top directory of Git repository
 MK_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
-COMMON_REPO ?= $(shell bash -c 'export MK_PATH=$(MK_PATH); echo $${MK_PATH%ocl_kernels/cl_gmem_2banks/*}')
+COMMON_REPO ?= $(shell bash -c 'export MK_PATH=$(MK_PATH); echo $${MK_PATH%ocl_kernels/cl_gmem_2banks_2x/*}')
 PWD = $(shell readlink -f .)
 XF_PROJ_ROOT = $(shell readlink -f $(COMMON_REPO))
 

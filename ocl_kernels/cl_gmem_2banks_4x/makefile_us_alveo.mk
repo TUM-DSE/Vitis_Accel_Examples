@@ -84,7 +84,7 @@ ifeq ($(MEMORY), ddr)
 else
 	VPP_LDFLAGS_apply_watermark += --config ./hbm.cfg
 endif
-EXECUTABLE = ./cl_gmem_2banks
+EXECUTABLE = ./cl_gmem_2banks_4x
 EMCONFIG_DIR = $(TEMP_DIR)
 
 FREQ := 0:650
