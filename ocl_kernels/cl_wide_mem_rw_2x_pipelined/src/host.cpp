@@ -222,6 +222,10 @@ int main(int argc, char** argv) {
             size_t buf_offset = chunk * CHUNK_SIZE / sizeof(int);
 
             for (int cu = 0; cu < num_cu; cu++) {
+                if (chunk >= 2) {
+                    OCL_CHECK(err, err = to_host_events[2 * cu + flag].wait());
+                }
+
                 inBufExt1[cu].obj = source_in1.data() + (cu * DATA_SIZE) + buf_offset;
                 inBufExt2[cu].obj = source_in2.data() + (cu * DATA_SIZE) + buf_offset;
                 outBufExt[cu].obj = source_hw_results.data() + (cu * DATA_SIZE) + buf_offset;
@@ -251,7 +255,7 @@ int main(int argc, char** argv) {
             OCL_CHECK(err, err = q.finish());
 
             for (int cu = 0; cu < num_cu; cu++) {
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[cu]}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &to_host_events[flag]));
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[cu]}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &to_host_events[2 * cu + flag]));
             }
             OCL_CHECK(err, err = q.finish());
         }
