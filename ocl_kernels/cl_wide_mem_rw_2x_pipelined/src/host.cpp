@@ -224,11 +224,19 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-        for (size_t chunk = 0; chunk < num_chunks; chunk++) {
+        // TODO: num_chunks
+        for (size_t chunk = 0; chunk < 1; chunk++) {
             int flag = chunk % 2;
             size_t cur_chunk_size = CHUNK_SIZE;
             if (chunk == num_chunks - 1) {
                 cur_chunk_size = last_chunk_size;
+            }
+            size_t buf_offset = chunk * CHUNK_SIZE / sizeof(int);
+
+            for (int cu = 0; cu < num_cu; cu++) {
+                inBufExt1[cu].obj = source_in1.data() + (cu * DATA_SIZE) + buf_offset;
+                inBufExt2[cu].obj = source_in2.data() + (cu * DATA_SIZE) + buf_offset;
+                outBufExt[cu].obj = source_hw_results.data() + (cu * DATA_SIZE) + buf_offset;
             }
 
             for (int cu = 0; cu < num_cu; cu++) {
