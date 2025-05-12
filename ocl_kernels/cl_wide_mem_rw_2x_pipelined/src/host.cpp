@@ -250,17 +250,17 @@ int main(int argc, char** argv) {
             }
 
             for (int cu = 0; cu < num_cu; cu++) {
-            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/));
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/));
             }
             OCL_CHECK(err, err = q.finish());
 
             for (int cu = 0; cu < num_cu; cu++) {
-            OCL_CHECK(err, err = q.enqueueTask(krnls[cu]));
+                OCL_CHECK(err, err = q.enqueueTask(krnls[cu]));
             }
             OCL_CHECK(err, err = q.finish());
 
             for (int cu = 0; cu < num_cu; cu++) {
-            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[cu]}, CL_MIGRATE_MEM_OBJECT_HOST));
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[cu]}, CL_MIGRATE_MEM_OBJECT_HOST));
             }
             OCL_CHECK(err, err = q.finish());
         }
