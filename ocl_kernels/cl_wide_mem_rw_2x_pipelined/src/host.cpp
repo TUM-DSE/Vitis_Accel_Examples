@@ -222,37 +222,37 @@ int main(int argc, char** argv) {
             size_t buf_offset = chunk * CHUNK_SIZE / sizeof(int);
 
             for (int cu = 0; cu < num_cu; cu++) {
+                int idx = 2 * cu + flag;
+
                 if (chunk >= 2) {
-                    OCL_CHECK(err, err = to_host_events[2 * cu + flag].wait());
+                    OCL_CHECK(err, err = to_host_events[idx].wait());
                 }
 
-                inBufExt1[cu].obj = source_in1.data() + (cu * DATA_SIZE) + buf_offset;
-                inBufExt2[cu].obj = source_in2.data() + (cu * DATA_SIZE) + buf_offset;
-                outBufExt[cu].obj = source_hw_results.data() + (cu * DATA_SIZE) + buf_offset;
+                inBufExt1[idx].obj = source_in1.data() + (cu * DATA_SIZE) + buf_offset;
+                inBufExt2[idx].obj = source_in2.data() + (cu * DATA_SIZE) + buf_offset;
+                outBufExt[idx].obj = source_hw_results.data() + (cu * DATA_SIZE) + buf_offset;
 
-                OCL_CHECK(err, buffer_in1[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                          cur_chunk_size, &inBufExt1[cu], &err));
-                OCL_CHECK(err, buffer_in2[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                          cur_chunk_size, &inBufExt2[cu], &err));
-                OCL_CHECK(err, buffer_out[cu] = cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                          cur_chunk_size, &outBufExt[cu], &err));
+                OCL_CHECK(err, buffer_in1[idx] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+                                                          cur_chunk_size, &inBufExt1[idx], &err));
+                OCL_CHECK(err, buffer_in2[idx] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+                                                          cur_chunk_size, &inBufExt2[idx], &err));
+                OCL_CHECK(err, buffer_out[idx] = cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+                                                          cur_chunk_size, &outBufExt[idx], &err));
 
                 int narg = 0;
-                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in1[cu]));
-                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in2[cu]));
-                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_out[cu]));
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in1[idx]));
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in2[idx]));
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_out[idx]));
                 OCL_CHECK(err, err = krnls[cu].setArg(narg++, (int)(cur_chunk_size / sizeof(int))));
-            }
 
-            for (int cu = 0; cu < num_cu; cu++) {
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/, nullptr, &to_fpga_events[2 * cu + flag]));
-                OCL_CHECK(err, err = q.finish());
-                OCL_CHECK(err, err = q.enqueueTask(krnls[cu], nullptr, &kernel_events[2 * cu + flag]));
-                OCL_CHECK(err, err = q.finish());
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[cu]}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &to_host_events[2 * cu + flag]));
-                OCL_CHECK(err, err = q.finish());
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[idx], buffer_in2[idx]}, 0 /* 0 means from host*/, nullptr, &to_fpga_events[idx]));
+
+                std::vector<cl::Event> wait_kernel{to_fpga_events[idx]};
+                OCL_CHECK(err, err = q.enqueueTask(krnls[cu], &wait_kernel, &kernel_events[idx]));
+
+                std::vector<cl::Event> wait_to_host{kernel_events[idx]};
+                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[idx]}, CL_MIGRATE_MEM_OBJECT_HOST, &wait_to_host, &to_host_events[idx]));
             }
-            OCL_CHECK(err, err = q.finish());
         }
 
         OCL_CHECK(err, err = q.finish());
