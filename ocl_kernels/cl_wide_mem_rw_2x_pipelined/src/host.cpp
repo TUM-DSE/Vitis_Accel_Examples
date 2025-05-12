@@ -99,26 +99,23 @@ int main(int argc, char** argv) {
     // For Allocating Buffer to specific Global Memory PC, user has to use
     // cl_mem_ext_ptr_t
     // and provide the PCs
-    std::vector<cl_mem_ext_ptr_t> inBufExt1(num_cu);
-    std::vector<cl_mem_ext_ptr_t> inBufExt2(num_cu);
-    std::vector<cl_mem_ext_ptr_t> outBufExt(num_cu);
+    std::vector<cl_mem_ext_ptr_t> inBufExt1(2 * num_cu);
+    std::vector<cl_mem_ext_ptr_t> inBufExt2(2 * num_cu);
+    std::vector<cl_mem_ext_ptr_t> outBufExt(2 * num_cu);
 
-    for (int i = 0; i < num_cu; i++) {
-        inBufExt1[i].obj = source_in1.data() + (i * DATA_SIZE);
+    for (int i = 0; i < 2 * num_cu; i++) {
         inBufExt1[i].param = 0;
         if(ddr_flag)
           inBufExt1[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
         else
           inBufExt1[i].flags = pc[(i*(pc_per_cu))];
 
-        inBufExt2[i].obj = source_in2.data() + (i * DATA_SIZE);
         inBufExt2[i].param = 0;
         if(ddr_flag)
           inBufExt2[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
         else
           inBufExt2[i].flags = pc[(i*(pc_per_cu))+1];
 
-        outBufExt[i].obj = source_hw_results.data() + (i * DATA_SIZE);
         outBufExt[i].param = 0;
         if(ddr_flag)
           outBufExt[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
@@ -193,18 +190,10 @@ int main(int argc, char** argv) {
     //     OCL_CHECK(err, err = krnls[i].setArg(narg++, size));
     // }
 
-    std::vector<cl::Event> event_kernel(num_cu);
-    std::vector<cl::Event> event_data_to_fpga(num_cu);
-    std::vector<cl::Event> event_data_to_host(num_cu);
     const int iterations = 1000;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     std::chrono::duration<double> duration;
     int64_t nstime_cpu = 0;
-    uint64_t nstimestart = 0;
-    uint64_t nstimeend = 0;
-    uint64_t nstime_kernel_ocl = 0;
-    uint64_t nstime_data_to_fpga_ocl = 0;
-    uint64_t nstime_data_to_host_ocl = 0;
 
     std::chrono::duration<double> to_fpga_time(0);
     std::chrono::duration<double> kernel_time(0);
@@ -224,7 +213,6 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-        // TODO: num_chunks
         for (size_t chunk = 0; chunk < num_chunks; chunk++) {
             int flag = chunk % 2;
             size_t cur_chunk_size = CHUNK_SIZE;
@@ -237,18 +225,14 @@ int main(int argc, char** argv) {
                 inBufExt1[cu].obj = source_in1.data() + (cu * DATA_SIZE) + buf_offset;
                 inBufExt2[cu].obj = source_in2.data() + (cu * DATA_SIZE) + buf_offset;
                 outBufExt[cu].obj = source_hw_results.data() + (cu * DATA_SIZE) + buf_offset;
-            }
 
-            for (int cu = 0; cu < num_cu; cu++) {
                 OCL_CHECK(err, buffer_in1[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
                                                           cur_chunk_size, &inBufExt1[cu], &err));
                 OCL_CHECK(err, buffer_in2[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
                                                           cur_chunk_size, &inBufExt2[cu], &err));
                 OCL_CHECK(err, buffer_out[cu] = cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
                                                           cur_chunk_size, &outBufExt[cu], &err));
-            }
 
-            for (int cu = 0; cu < num_cu; cu++) {
                 int narg = 0;
                 OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in1[cu]));
                 OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in2[cu]));
