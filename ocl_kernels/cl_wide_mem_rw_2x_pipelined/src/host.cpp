@@ -255,11 +255,13 @@ int main(int argc, char** argv) {
             }
             OCL_CHECK(err, err = q.finish());
         }
-    }
 
-    end_time = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration<double>(end_time - start_time);
-    nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+        OCL_CHECK(err, err = q.finish());
+
+        end_time = std::chrono::high_resolution_clock::now();
+        duration = std::chrono::duration<double>(end_time - start_time);
+        nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+    }
 
     // for (int i = 0; i < iterations; i++) {
 
