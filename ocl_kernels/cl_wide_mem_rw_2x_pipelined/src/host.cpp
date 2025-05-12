@@ -168,30 +168,30 @@ int main(int argc, char** argv) {
 
     // Allocate Buffer in Global Memory
     size_t vector_size_bytes = sizeof(int) * DATA_SIZE;
-    std::vector<cl::Buffer> buffer_in1(num_cu);
-    std::vector<cl::Buffer> buffer_in2(num_cu);
-    std::vector<cl::Buffer> buffer_output(num_cu);
+    // std::vector<cl::Buffer> buffer_in1(num_cu);
+    // std::vector<cl::Buffer> buffer_in2(num_cu);
+    // std::vector<cl::Buffer> buffer_output(num_cu);
 
-    for (int i = 0; i < num_cu; i++) {
-        OCL_CHECK(err, buffer_in1[i]    = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                     vector_size_bytes, &inBufExt1[i], &err));
-        OCL_CHECK(err, buffer_in2[i]    = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                     vector_size_bytes, &inBufExt2[i], &err));
-        OCL_CHECK(err, buffer_output[i] = cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                     vector_size_bytes, &outBufExt[i], &err));
-    }
+    // for (int i = 0; i < num_cu; i++) {
+    //     OCL_CHECK(err, buffer_in1[i]    = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+    //                                                  vector_size_bytes, &inBufExt1[i], &err));
+    //     OCL_CHECK(err, buffer_in2[i]    = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+    //                                                  vector_size_bytes, &inBufExt2[i], &err));
+    //     OCL_CHECK(err, buffer_output[i] = cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+    //                                                  vector_size_bytes, &outBufExt[i], &err));
+    // }
 
     // Set the Kernel Arguments
-    int size = DATA_SIZE;
-    for (int i = 0; i < num_cu; i++) {
-        int narg = 0;
+    // int size = DATA_SIZE;
+    // for (int i = 0; i < num_cu; i++) {
+    //     int narg = 0;
 
-        // Setting kernel arguments
-        OCL_CHECK(err, err = krnls[i].setArg(narg++, buffer_in1[i]));
-        OCL_CHECK(err, err = krnls[i].setArg(narg++, buffer_in2[i]));
-        OCL_CHECK(err, err = krnls[i].setArg(narg++, buffer_output[i]));
-        OCL_CHECK(err, err = krnls[i].setArg(narg++, size));
-    }
+    //     // Setting kernel arguments
+    //     OCL_CHECK(err, err = krnls[i].setArg(narg++, buffer_in1[i]));
+    //     OCL_CHECK(err, err = krnls[i].setArg(narg++, buffer_in2[i]));
+    //     OCL_CHECK(err, err = krnls[i].setArg(narg++, buffer_output[i]));
+    //     OCL_CHECK(err, err = krnls[i].setArg(narg++, size));
+    // }
 
     std::vector<cl::Event> event_kernel(num_cu);
     std::vector<cl::Event> event_data_to_fpga(num_cu);
@@ -210,6 +210,13 @@ int main(int argc, char** argv) {
     std::chrono::duration<double> kernel_time(0);
     std::chrono::duration<double> from_fpga_time(0);
 
+    std::vector<cl::Event> kernel_events(2 * num_cu);
+    std::vector<cl::Event> to_fpga_events(2 * num_cu);
+    std::vector<cl::Event> to_host_events(2 * num_cu);
+    cl::Buffer buffer_in1[2 * num_cu];
+    cl::Buffer buffer_in2[2 * num_cu];
+    cl::Buffer buffer_out[2 * num_cu];
+
     // This is required for proper time measurements in Proteus. We add it here
     // as well to have the same host code for Proteus and native.
     q.finish();
@@ -217,20 +224,46 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-        for (int cu = 0; cu < num_cu; cu++) {
-          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/));
-        }
-        OCL_CHECK(err, err = q.finish());
+        for (size_t chunk = 0; chunk < num_chunks; chunk++) {
+            int flag = chunk % 2;
+            size_t cur_chunk_size = CHUNK_SIZE;
+            if (chunk == num_chunks - 1) {
+                cur_chunk_size = last_chunk_size;
+            }
 
-        for (int cu = 0; cu < num_cu; cu++) {
-          OCL_CHECK(err, err = q.enqueueTask(krnls[cu]));
-        }
-        OCL_CHECK(err, err = q.finish());
+            for (int cu = 0; cu < num_cu; cu++) {
+                OCL_CHECK(err, buffer_in1[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+                                                          vector_size_bytes, &inBufExt1[cu], &err));
+                OCL_CHECK(err, buffer_in2[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+                                                          vector_size_bytes, &inBufExt2[cu], &err));
+                OCL_CHECK(err, buffer_out[cu] = cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
+                                                          vector_size_bytes, &outBufExt[cu], &err));
+            }
 
-        for (int cu = 0; cu < num_cu; cu++) {
-          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output[cu]}, CL_MIGRATE_MEM_OBJECT_HOST));
+            int size = DATA_SIZE;
+            for (int cu = 0; cu < num_cu; cu++) {
+                int narg = 0;
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in1[cu]));
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in2[cu]));
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_out[cu]));
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, size));
+            }
+
+            for (int cu = 0; cu < num_cu; cu++) {
+            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/));
+            }
+            OCL_CHECK(err, err = q.finish());
+
+            for (int cu = 0; cu < num_cu; cu++) {
+            OCL_CHECK(err, err = q.enqueueTask(krnls[cu]));
+            }
+            OCL_CHECK(err, err = q.finish());
+
+            for (int cu = 0; cu < num_cu; cu++) {
+            OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[cu]}, CL_MIGRATE_MEM_OBJECT_HOST));
+            }
+            OCL_CHECK(err, err = q.finish());
         }
-        OCL_CHECK(err, err = q.finish());
     }
 
     end_time = std::chrono::high_resolution_clock::now();
