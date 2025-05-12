@@ -18,6 +18,10 @@
 #include <vector>
 #include <iomanip>
 
+#include <cassert>
+#include <climits>
+#include <cmath>
+
 // DATA_SIZE should be multiple of 16 as Kernel Code is using int16 vector
 // datatype
 // to read the operands from Global Memory. So every read/write to global memory
@@ -25,6 +29,7 @@
 // As the other examples only read 1 int from memory at once, we use 16 times the
 // data size of the other examples
 #define DATA_SIZE (2 * 1024 * 1024) // 2 * 2(num_cu) * 2(buffers) * sizeof(int) = 32 MB
+#define DATA_SIZE_BYTES (DATA_SIZE * sizeof(int))
 
 // Number of HBM PCs required
 #define MAX_HBM_PC_COUNT 32
@@ -40,6 +45,9 @@ const int pc_ddr[MAX_DDR_PC_COUNT] = {
     XCL_MEM_DDR_BANK0, XCL_MEM_DDR_BANK1 //, XCL_MEM_DDR_BANK2, XCL_MEM_DDR_BANK3
 };
 
+constexpr size_t ALIGNMENT = 4096;
+constexpr size_t CHUNK_SIZE = 8192;
+
 auto constexpr num_cu = 2;
 auto constexpr pc_per_cu = 4;
 
@@ -48,6 +56,21 @@ int main(int argc, char** argv) {
         std::cout << "Usage: " << argv[0] << " <XCLBIN File> <Memory Type: 0 (HBM) or 1 (DDR)>" << std::endl;
         return EXIT_FAILURE;
     }
+
+    assert(DATA_SIZE_BYTES % ALIGNMENT == 0);
+    // The size parameter of the kernel is type int, specifies number of ints
+    assert(CHUNK_SIZE / sizeof(int) <= INT_MAX);
+
+    size_t num_chunks = std::ceil(DATA_SIZE_BYTES / (double)CHUNK_SIZE);
+    size_t last_chunk_size = DATA_SIZE_BYTES % CHUNK_SIZE;
+    if (last_chunk_size == 0) {
+      last_chunk_size = CHUNK_SIZE;
+    }
+
+    std::cout << "buffer size:       " << DATA_SIZE_BYTES << " Bytes\n"
+              << "chunks per buffer: " << num_chunks << " Bytes\n"
+              << "chunk size:        " << CHUNK_SIZE << " Bytes\n"
+              << "last chunk size    " << last_chunk_size << " Bytes\n";
 
     std::string binaryFile = argv[1];
     std::string memoryType = argv[2];
