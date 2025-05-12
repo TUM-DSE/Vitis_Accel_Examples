@@ -217,47 +217,27 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-
         auto to_fpga_start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < num_cu; i++) {
-          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[i], buffer_in2[i]}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga[i]));
+        for (int cu = 0; cu < num_cu; cu++) {
+          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/));
         }
         OCL_CHECK(err, err = q.finish());
         auto to_fpga_end = std::chrono::high_resolution_clock::now();
 
         auto kernel_start = std::chrono::high_resolution_clock::now();
-        for (int i = 0; i < num_cu; i++) {
+        for (int cu = 0; cu < num_cu; cu++) {
           // Launch the kernel
-          OCL_CHECK(err, err = q.enqueueTask(krnls[i], nullptr, &event_kernel[i]));
+          OCL_CHECK(err, err = q.enqueueTask(krnls[cu]));
         }
         OCL_CHECK(err, err = q.finish());
         auto kernel_end = std::chrono::high_resolution_clock::now();
 
         auto from_fpga_start = std::chrono::high_resolution_clock::now();
-        // Copy result from device global memory to host local memory
-        for (int i = 0; i < num_cu; i++) {
-          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output[i]}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host[i]));
+        for (int cu = 0; cu < num_cu; cu++) {
+          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output[cu]}, CL_MIGRATE_MEM_OBJECT_HOST));
         }
         OCL_CHECK(err, err = q.finish());
         auto from_fpga_end = std::chrono::high_resolution_clock::now();
-
-        for (int i = 0; i < num_cu; i++) {
-          OCL_CHECK(err, err = event_data_to_fpga[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-          OCL_CHECK(err, err = event_data_to_fpga[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-          nstime_data_to_fpga_ocl += nstimeend - nstimestart;
-        }
-
-        for (int i = 0; i < num_cu; i++) {
-          OCL_CHECK(err, err = event_kernel[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-          OCL_CHECK(err, err = event_kernel[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-          nstime_kernel_ocl += nstimeend - nstimestart;
-        }
-
-        for (int i = 0; i < num_cu; i++) {
-          OCL_CHECK(err, err = event_data_to_host[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
-          OCL_CHECK(err, err = event_data_to_host[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-          nstime_data_to_host_ocl += nstimeend - nstimestart;
-        }
 
         to_fpga_time += std::chrono::duration<double>(to_fpga_end - to_fpga_start);
         kernel_time += std::chrono::duration<double>(kernel_end - kernel_start);
@@ -267,6 +247,54 @@ int main(int argc, char** argv) {
     end_time = std::chrono::high_resolution_clock::now();
     duration = std::chrono::duration<double>(end_time - start_time);
     nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+
+    // for (int i = 0; i < iterations; i++) {
+
+    //     auto to_fpga_start = std::chrono::high_resolution_clock::now();
+    //     for (int i = 0; i < num_cu; i++) {
+    //       OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[i], buffer_in2[i]}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga[i]));
+    //     }
+    //     OCL_CHECK(err, err = q.finish());
+    //     auto to_fpga_end = std::chrono::high_resolution_clock::now();
+
+    //     auto kernel_start = std::chrono::high_resolution_clock::now();
+    //     for (int i = 0; i < num_cu; i++) {
+    //       // Launch the kernel
+    //       OCL_CHECK(err, err = q.enqueueTask(krnls[i], nullptr, &event_kernel[i]));
+    //     }
+    //     OCL_CHECK(err, err = q.finish());
+    //     auto kernel_end = std::chrono::high_resolution_clock::now();
+
+    //     auto from_fpga_start = std::chrono::high_resolution_clock::now();
+    //     // Copy result from device global memory to host local memory
+    //     for (int i = 0; i < num_cu; i++) {
+    //       OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output[i]}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host[i]));
+    //     }
+    //     OCL_CHECK(err, err = q.finish());
+    //     auto from_fpga_end = std::chrono::high_resolution_clock::now();
+
+    //     for (int i = 0; i < num_cu; i++) {
+    //       OCL_CHECK(err, err = event_data_to_fpga[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+    //       OCL_CHECK(err, err = event_data_to_fpga[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+    //       nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+    //     }
+
+    //     for (int i = 0; i < num_cu; i++) {
+    //       OCL_CHECK(err, err = event_kernel[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+    //       OCL_CHECK(err, err = event_kernel[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+    //       nstime_kernel_ocl += nstimeend - nstimestart;
+    //     }
+
+    //     for (int i = 0; i < num_cu; i++) {
+    //       OCL_CHECK(err, err = event_data_to_host[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+    //       OCL_CHECK(err, err = event_data_to_host[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+    //       nstime_data_to_host_ocl += nstimeend - nstimestart;
+    //     }
+
+    //     to_fpga_time += std::chrono::duration<double>(to_fpga_end - to_fpga_start);
+    //     kernel_time += std::chrono::duration<double>(kernel_end - kernel_start);
+    //     from_fpga_time += std::chrono::duration<double>(from_fpga_end - from_fpga_start);
+    // }
 
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
     std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
