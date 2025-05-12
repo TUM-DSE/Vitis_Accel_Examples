@@ -46,7 +46,7 @@ const int pc_ddr[MAX_DDR_PC_COUNT] = {
 };
 
 constexpr size_t ALIGNMENT = 4096;
-constexpr size_t CHUNK_SIZE = 8192;
+constexpr size_t CHUNK_SIZE = 1024 * 1024;
 
 auto constexpr num_cu = 2;
 auto constexpr pc_per_cu = 4;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "buffer size:       " << DATA_SIZE_BYTES << " Bytes\n"
-              << "chunks per buffer: " << num_chunks << " Bytes\n"
+              << "chunks per buffer: " << num_chunks << "\n"
               << "chunk size:        " << CHUNK_SIZE << " Bytes\n"
               << "last chunk size    " << last_chunk_size << " Bytes\n";
 
@@ -225,7 +225,7 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < iterations; i++) {
         // TODO: num_chunks
-        for (size_t chunk = 0; chunk < 1; chunk++) {
+        for (size_t chunk = 0; chunk < num_chunks; chunk++) {
             int flag = chunk % 2;
             size_t cur_chunk_size = CHUNK_SIZE;
             if (chunk == num_chunks - 1) {
@@ -241,20 +241,19 @@ int main(int argc, char** argv) {
 
             for (int cu = 0; cu < num_cu; cu++) {
                 OCL_CHECK(err, buffer_in1[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                          vector_size_bytes, &inBufExt1[cu], &err));
+                                                          cur_chunk_size, &inBufExt1[cu], &err));
                 OCL_CHECK(err, buffer_in2[cu] = cl::Buffer(context, CL_MEM_READ_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                          vector_size_bytes, &inBufExt2[cu], &err));
+                                                          cur_chunk_size, &inBufExt2[cu], &err));
                 OCL_CHECK(err, buffer_out[cu] = cl::Buffer(context, CL_MEM_WRITE_ONLY | CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR,
-                                                          vector_size_bytes, &outBufExt[cu], &err));
+                                                          cur_chunk_size, &outBufExt[cu], &err));
             }
 
-            int size = DATA_SIZE;
             for (int cu = 0; cu < num_cu; cu++) {
                 int narg = 0;
                 OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in1[cu]));
                 OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_in2[cu]));
                 OCL_CHECK(err, err = krnls[cu].setArg(narg++, buffer_out[cu]));
-                OCL_CHECK(err, err = krnls[cu].setArg(narg++, size));
+                OCL_CHECK(err, err = krnls[cu].setArg(narg++, (int)(cur_chunk_size / sizeof(int))));
             }
 
             for (int cu = 0; cu < num_cu; cu++) {
