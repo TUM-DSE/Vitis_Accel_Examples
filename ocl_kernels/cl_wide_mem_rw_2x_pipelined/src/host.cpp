@@ -246,16 +246,11 @@ int main(int argc, char** argv) {
 
             for (int cu = 0; cu < num_cu; cu++) {
                 OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/, nullptr, &to_fpga_events[2 * cu + flag]));
-            }
-            OCL_CHECK(err, err = q.finish());
-
-            for (int cu = 0; cu < num_cu; cu++) {
+                OCL_CHECK(err, err = q.finish());
                 OCL_CHECK(err, err = q.enqueueTask(krnls[cu], nullptr, &kernel_events[2 * cu + flag]));
-            }
-            OCL_CHECK(err, err = q.finish());
-
-            for (int cu = 0; cu < num_cu; cu++) {
+                OCL_CHECK(err, err = q.finish());
                 OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_out[cu]}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &to_host_events[2 * cu + flag]));
+                OCL_CHECK(err, err = q.finish());
             }
             OCL_CHECK(err, err = q.finish());
         }
