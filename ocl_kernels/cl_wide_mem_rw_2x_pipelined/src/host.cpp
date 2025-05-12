@@ -217,31 +217,20 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-        auto to_fpga_start = std::chrono::high_resolution_clock::now();
         for (int cu = 0; cu < num_cu; cu++) {
           OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[cu], buffer_in2[cu]}, 0 /* 0 means from host*/));
         }
         OCL_CHECK(err, err = q.finish());
-        auto to_fpga_end = std::chrono::high_resolution_clock::now();
 
-        auto kernel_start = std::chrono::high_resolution_clock::now();
         for (int cu = 0; cu < num_cu; cu++) {
-          // Launch the kernel
           OCL_CHECK(err, err = q.enqueueTask(krnls[cu]));
         }
         OCL_CHECK(err, err = q.finish());
-        auto kernel_end = std::chrono::high_resolution_clock::now();
 
-        auto from_fpga_start = std::chrono::high_resolution_clock::now();
         for (int cu = 0; cu < num_cu; cu++) {
           OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output[cu]}, CL_MIGRATE_MEM_OBJECT_HOST));
         }
         OCL_CHECK(err, err = q.finish());
-        auto from_fpga_end = std::chrono::high_resolution_clock::now();
-
-        to_fpga_time += std::chrono::duration<double>(to_fpga_end - to_fpga_start);
-        kernel_time += std::chrono::duration<double>(kernel_end - kernel_start);
-        from_fpga_time += std::chrono::duration<double>(from_fpga_end - from_fpga_start);
     }
 
     end_time = std::chrono::high_resolution_clock::now();
