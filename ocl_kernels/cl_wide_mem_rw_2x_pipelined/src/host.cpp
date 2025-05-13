@@ -82,9 +82,10 @@ int main(int argc, char** argv) {
       last_chunk_size = chunk_size;
     }
 
-    std::cout << "buffer size:       " << DATA_SIZE_BYTES << " Bytes\n"
-              << "chunks per buffer: " << num_chunks << "\n"
+    std::cout << "bank optimization: " << (opt_banks ? "yes" : "no") << "\n"
+              << "buffer size:       " << DATA_SIZE_BYTES << " Bytes\n"
               << "chunk size:        " << chunk_size << " Bytes\n"
+              << "chunks per buffer: " << num_chunks << "\n"
               << "last chunk size    " << last_chunk_size << " Bytes\n";
 
     std::string binaryFile = argv[1];
@@ -120,22 +121,40 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < 2 * num_cu; i++) {
         inBufExt1[i].param = 0;
-        if(ddr_flag)
-          inBufExt1[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
-        else
-          inBufExt1[i].flags = pc[(i*(pc_per_cu))];
-
         inBufExt2[i].param = 0;
-        if(ddr_flag)
-          inBufExt2[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
-        else
-          inBufExt2[i].flags = pc[(i*(pc_per_cu))+1];
-
         outBufExt[i].param = 0;
-        if(ddr_flag)
-          outBufExt[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
-        else
-          outBufExt[i].flags = pc[(i*(pc_per_cu))+2];
+
+        if (opt_banks) {
+            if(ddr_flag)
+                inBufExt1[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+            else
+                inBufExt1[i].flags = pc[(i*(pc_per_cu))];
+
+            if(ddr_flag)
+                inBufExt2[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+            else
+                inBufExt2[i].flags = pc[(i*(pc_per_cu))+1];
+
+            if(ddr_flag)
+                outBufExt[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+            else
+                outBufExt[i].flags = pc[(i*(pc_per_cu))+2];
+        } else {
+            if(ddr_flag)
+                inBufExt1[i].flags = pc_ddr[0];
+            else
+                inBufExt1[i].flags = pc[0];
+
+            if(ddr_flag)
+                inBufExt2[i].flags = pc_ddr[0];
+            else
+                inBufExt2[i].flags = pc[0];
+
+            if(ddr_flag)
+                outBufExt[i].flags = pc_ddr[1];
+            else
+                outBufExt[i].flags = pc[1];
+        }
     }
 
     // OPENCL HOST CODE AREA START
