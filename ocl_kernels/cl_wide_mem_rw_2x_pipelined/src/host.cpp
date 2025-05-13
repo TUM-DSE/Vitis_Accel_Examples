@@ -45,31 +45,46 @@ const int pc_ddr[MAX_DDR_PC_COUNT] = {
     XCL_MEM_DDR_BANK0, XCL_MEM_DDR_BANK1 //, XCL_MEM_DDR_BANK2, XCL_MEM_DDR_BANK3
 };
 
+constexpr size_t MiB = 1024 * 1024;
 constexpr size_t ALIGNMENT = 4096;
 constexpr size_t CHUNK_SIZE = 1024 * 1024;
+constexpr bool OPT_BANKS = false;
 
 auto constexpr num_cu = 2;
 auto constexpr pc_per_cu = 4;
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::cout << "Usage: " << argv[0] << " <XCLBIN File> <Memory Type: 0 (HBM) or 1 (DDR)>" << std::endl;
+    if (argc < 3) {
+        std::cout << "Usage: " << argv[0] << " <XCLBIN File> Memory Type: 0 (HBM) or 1 (DDR)>\n"
+                  << "  [-c <size>] Chunk size in MiB\n"
+                  << "  [-o]        Optimized memory bank assignment\n";
         return EXIT_FAILURE;
+    }
+
+    size_t chunk_size = CHUNK_SIZE;
+    size_t opt_banks = OPT_BANKS;
+
+    for (int i = 3; i < argc; i++) {
+        if (strcmp("-c", argv[i]) == 0) {
+            chunk_size = std::stol(argv[i + 1]) * MiB;
+        } else if (strcmp("-o", argv[i]) == 0) {
+            opt_banks = true;
+        }
     }
 
     assert(DATA_SIZE_BYTES % ALIGNMENT == 0);
     // The size parameter of the kernel is type int, specifies number of ints
-    assert(CHUNK_SIZE / sizeof(int) <= INT_MAX);
+    assert(chunk_size / sizeof(int) <= INT_MAX);
 
-    size_t num_chunks = std::ceil(DATA_SIZE_BYTES / (double)CHUNK_SIZE);
-    size_t last_chunk_size = DATA_SIZE_BYTES % CHUNK_SIZE;
+    size_t num_chunks = std::ceil(DATA_SIZE_BYTES / (double)chunk_size);
+    size_t last_chunk_size = DATA_SIZE_BYTES % chunk_size;
     if (last_chunk_size == 0) {
-      last_chunk_size = CHUNK_SIZE;
+      last_chunk_size = chunk_size;
     }
 
     std::cout << "buffer size:       " << DATA_SIZE_BYTES << " Bytes\n"
               << "chunks per buffer: " << num_chunks << "\n"
-              << "chunk size:        " << CHUNK_SIZE << " Bytes\n"
+              << "chunk size:        " << chunk_size << " Bytes\n"
               << "last chunk size    " << last_chunk_size << " Bytes\n";
 
     std::string binaryFile = argv[1];
@@ -215,11 +230,11 @@ int main(int argc, char** argv) {
     for (int i = 0; i < iterations; i++) {
         for (size_t chunk = 0; chunk < num_chunks; chunk++) {
             int flag = chunk % 2;
-            size_t cur_chunk_size = CHUNK_SIZE;
+            size_t cur_chunk_size = chunk_size;
             if (chunk == num_chunks - 1) {
                 cur_chunk_size = last_chunk_size;
             }
-            size_t buf_offset = chunk * CHUNK_SIZE / sizeof(int);
+            size_t buf_offset = chunk * chunk_size / sizeof(int);
 
             for (int cu = 0; cu < num_cu; cu++) {
                 int idx = 2 * cu + flag;
