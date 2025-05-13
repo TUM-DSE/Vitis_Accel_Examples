@@ -126,17 +126,17 @@ int main(int argc, char** argv) {
 
         if (opt_banks) {
             if(ddr_flag)
-                inBufExt1[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+                inBufExt1[i].flags = pc_ddr[0];
             else
                 inBufExt1[i].flags = pc[(i*(pc_per_cu))];
 
             if(ddr_flag)
-                inBufExt2[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+                inBufExt2[i].flags = pc_ddr[0];
             else
                 inBufExt2[i].flags = pc[(i*(pc_per_cu))+1];
 
             if(ddr_flag)
-                outBufExt[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+                outBufExt[i].flags = pc_ddr[1];
             else
                 outBufExt[i].flags = pc[(i*(pc_per_cu))+2];
         } else {

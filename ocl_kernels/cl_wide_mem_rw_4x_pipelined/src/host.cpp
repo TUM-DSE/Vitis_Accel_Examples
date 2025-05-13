@@ -28,7 +28,7 @@
 // will read 16 integers value.
 // As the other examples only read 1 int from memory at once, we use 16 times the
 // data size of the other examples
-#define DATA_SIZE (1024 * 1024) // 4(num_cu) * 2 * sizeof(int) = 32 MB
+#define DATA_SIZE (2 * 1024 * 1024) // 4(num_cu) * 2 * sizeof(int) = 64 MB
 #define DATA_SIZE_BYTES (DATA_SIZE * sizeof(int))
 
 // Number of HBM PCs required
@@ -126,17 +126,17 @@ int main(int argc, char** argv) {
 
         if (opt_banks) {
             if(ddr_flag)
-                inBufExt1[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+                inBufExt1[i].flags = pc_ddr[0];
             else
                 inBufExt1[i].flags = pc[(i*(pc_per_cu))];
 
             if(ddr_flag)
-                inBufExt2[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+                inBufExt2[i].flags = pc_ddr[0];
             else
                 inBufExt2[i].flags = pc[(i*(pc_per_cu))+1];
 
             if(ddr_flag)
-                outBufExt[i].flags = pc_ddr[(i%MAX_DDR_PC_COUNT)];
+                outBufExt[i].flags = pc_ddr[1];
             else
                 outBufExt[i].flags = pc[(i*(pc_per_cu))+2];
         } else {
@@ -227,7 +227,7 @@ int main(int argc, char** argv) {
     //     OCL_CHECK(err, err = krnls[i].setArg(narg++, size));
     // }
 
-    const int iterations = 1000;
+    const int iterations = 500;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     std::chrono::duration<double> duration;
     int64_t nstime_cpu = 0;
