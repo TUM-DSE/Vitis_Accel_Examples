@@ -349,19 +349,13 @@ int main(int argc, char** argv) {
 
 
     // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
-    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
-    std::cout << "cl_wide_mem_rw_4x,"
-              << vector_size_bytes * 2 * num_cu << ","
-              << vector_size_bytes * num_cu << ","
+    std::cout << "app_name,iterations,buf_size,chunk_size,num_chunks,time_loop\n"
+              << "cl_wide_mem_rw_4x,"
               << iterations << ","
-              << std::setprecision(std::numeric_limits<double>::digits10)
-              << nstime_cpu / (double)1'000'000'000 << ","
-              << to_fpga_time.count()   << ","
-              << kernel_time.count()    << ","
-              << from_fpga_time.count() << "\n";
-              // << nstime_data_to_fpga_ocl / (double)1'000'000'000 << ","
-              // << nstime_kernel_ocl / (double)1'000'000'000 << ","
-              // << nstime_data_to_host_ocl / (double)1'000'000'000 << "\n";
+              << vector_size_bytes << ","
+              << chunk_size << ","
+              << num_chunks << ","
+              << nstime_cpu / (double)1'000'000'000 << "\n";
 
     // std::cout << "data_to_fpga_cpu_time,kernel_cpu_time,data_to_host_cpu_time\n";
     // std::cout << "cl_wide_mem_rw_2x,"
