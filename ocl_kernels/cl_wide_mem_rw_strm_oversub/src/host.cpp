@@ -144,7 +144,9 @@ int main(int argc, char** argv) {
     }
 
     assert(data_size % ALIGNMENT == 0);
-    bool oversub = 3 * data_size > mem_limit;
+    // bool oversub = 3 * data_size > mem_limit;
+    bool oversub = true;
+    bool mem_limited = 3 * data_size > mem_limit;
 
     std::cout << "Memory limit: " << mem_limit / MiB << " MiB\n";
     std::cout << "Buffer size:  " << data_size / MiB << " MiB, 3 buffers in total\n";
@@ -218,10 +220,13 @@ int main(int argc, char** argv) {
         // Without optimizations, 3 chunks have to fit into mem_limit. With
         // optimizations, 6 chunks have to fit. Also round down to closest
         // multiple of ALIGNMENT.
-        if (optimized) {
+        if (optimized && mem_limited) {
             chunk_size = (mem_limit / 6) & ~(ALIGNMENT - 1);
-        } else {
+        } else if (mem_limited) {
             chunk_size = (mem_limit / 3) & ~(ALIGNMENT - 1);
+        } else {
+            // Always enable overlapping
+            chunk_size = (data_size / 8) & ~(ALIGNMENT - 1);
         }
     }
 
