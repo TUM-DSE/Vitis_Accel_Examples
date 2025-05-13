@@ -151,9 +151,9 @@ int main(int argc, char** argv) {
                 inBufExt2[i].flags = pc[0];
 
             if(ddr_flag)
-                outBufExt[i].flags = pc_ddr[1];
+                outBufExt[i].flags = pc_ddr[0];
             else
-                outBufExt[i].flags = pc[1];
+                outBufExt[i].flags = pc[0];
         }
     }
 
