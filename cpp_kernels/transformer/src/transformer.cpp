@@ -20,7 +20,7 @@
 #include "parameters.h"
 
 
-void myproject(
+void transformer(
     input_t input_layer[16],
     result_t layer5_out[32]
 ) {

@@ -91,7 +91,7 @@ xclbin: build
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
 $(TEMP_DIR)/transformer.xo: src/transformer.cpp
 	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k transformer --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
+	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k transformer --temp_dir $(TEMP_DIR)  -I'$(<D)' -Ifirmware/ -o'$@' '$<'
 
 $(BUILD_DIR)/transformer.xclbin: $(TEMP_DIR)/transformer.xo
 	mkdir -p $(BUILD_DIR)
