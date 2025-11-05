@@ -14,61 +14,54 @@
 * under the License.
 */
 
-/*******************************************************************************
-Description:
-    HLS Example using AXI4-master interface for burst read and write
-*******************************************************************************/
+#include <iostream>
 
-// Includes
-#include <stdio.h>
-#include <string.h>
+#include "myproject.h"
+#include "parameters.h"
 
-#define DATA_SIZE 2048
-// define internal buffer max size
-#define BURSTBUFFERSIZE 256
 
-// TRIPCOUNT identifiers
-const unsigned int c_size_min = 1;
-const unsigned int c_size_max = BURSTBUFFERSIZE;
-const unsigned int c_chunk_sz = DATA_SIZE;
+void myproject(
+    input_t input_layer[16],
+    result_t layer5_out[32]
+) {
 
-extern "C" {
-void vadd(int* a, int size, int inc_value) {
-// Map pointer a to AXI4-master interface for global memory access
-#pragma HLS INTERFACE m_axi port = a offset = slave bundle = gmem max_read_burst_length = 256 max_write_burst_length = \
-    256
-// We also need to map a and return to a bundled axilite slave interface
-#pragma HLS INTERFACE s_axilite port = a
-#pragma HLS INTERFACE s_axilite port = size
-#pragma HLS INTERFACE s_axilite port = inc_value
-#pragma HLS INTERFACE s_axilite port = return
+    // hls-fpga-machine-learning insert IO
+    #pragma HLS ARRAY_RESHAPE variable=input_layer complete dim=0
+    #pragma HLS ARRAY_PARTITION variable=layer5_out complete dim=0
+    #pragma HLS INTERFACE ap_vld port=input_layer,layer5_out
+    #pragma HLS PIPELINE
 
-    int burstbuffer[BURSTBUFFERSIZE];
+    // hls-fpga-machine-learning insert load weights
+#ifndef __SYNTHESIS__
+    static bool loaded_weights = false;
+    if (!loaded_weights) {
+        nnet::load_weights_from_txt<model_default_t, 1024>(w2, "w2.txt");
+        nnet::load_weights_from_txt<model_default_t, 64>(b2, "b2.txt");
+        nnet::load_weights_from_txt<model_default_t, 2048>(w4, "w4.txt");
+        nnet::load_weights_from_txt<model_default_t, 32>(b4, "b4.txt");
+        loaded_weights = true;    }
+#endif
+    // ****************************************
+    // NETWORK INSTANTIATION
+    // ****************************************
 
-read_buf:
-    // Per iteration of this loop perform BURSTBUFFERSIZE vector addition
-    for (int i = 0; i < size; i += BURSTBUFFERSIZE) {
-#pragma HLS LOOP_TRIPCOUNT min = c_size_min* c_size_min max = c_chunk_sz * c_chunk_sz / (c_size_max * c_size_max)
-        int chunk_size = BURSTBUFFERSIZE;
-        // boundary checks
-        if ((i + BURSTBUFFERSIZE) > size) chunk_size = size - i;
-        // burst read
-        // Auto-pipeline is going to apply pipeline to these loops
-        for (int j = 0; j < chunk_size; j++) {
-// As the outer loop is not a perfect loop
-#pragma HLS loop_flatten off
-#pragma HLS LOOP_TRIPCOUNT min = c_size_min max = c_size_max
-            burstbuffer[j] = a[i + j];
-        }
+    // hls-fpga-machine-learning insert layers
 
-    // calculate and write results to global memory, the sequential write in a for
-    // loop can be inferred to a memory burst access
-    calc_write:
-        for (int j = 0; j < chunk_size; j++) {
-#pragma HLS LOOP_TRIPCOUNT min = c_size_max max = c_chunk_sz
-            burstbuffer[j] = burstbuffer[j] + inc_value;
-            a[i + j] = burstbuffer[j];
-        }
-    }
-}
+    layer2_t layer2_out[64];
+    #pragma HLS ARRAY_PARTITION variable=layer2_out complete dim=0
+
+    layer3_t layer3_out[64];
+    #pragma HLS ARRAY_PARTITION variable=layer3_out complete dim=0
+
+    layer4_t layer4_out[32];
+    #pragma HLS ARRAY_PARTITION variable=layer4_out complete dim=0
+
+    nnet::dense<input_t, layer2_t, config2>(input_layer, layer2_out, w2, b2); // dense
+
+    nnet::relu<layer2_t, layer3_t, relu_config3>(layer2_out, layer3_out); // dense_relu
+
+    nnet::dense<layer3_t, layer4_t, config4>(layer3_out, layer4_out, w4, b4); // dense_1
+
+    nnet::relu<layer4_t, result_t, relu_config5>(layer4_out, layer5_out); // dense_1_relu
+
 }
