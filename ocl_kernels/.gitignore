@@ -24,3 +24,6 @@ cl_partition_cyclicblock/partition_cyclicblock
 cl_shift_register/shift_register
 cl_systolic_array/systolic_array
 cl_wide_mem_rw/wide_mem_rw
+cl_wide_mem_rw_2x/cl_wide_mem_rw
+cl_wide_mem_rw_4x/cl_wide_mem_rw
+cl_wide_mem_rw_strm/cl_wide_mem_rw
