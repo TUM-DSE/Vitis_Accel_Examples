@@ -58,24 +58,24 @@ BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
 LINK_OUTPUT := $(BUILD_DIR)/vadd.link.xclbin
 PACKAGE_OUT = ./package.$(TARGET)
 
-VPP_PFLAGS := 
+VPP_PFLAGS :=
 CMD_ARGS = $(BUILD_DIR)/vadd.xclbin
 CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++1y
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 
 ########################## Checking if PLATFORM in allowlist #######################
-PLATFORM_BLOCKLIST += zc702 nodma u2_ 
+PLATFORM_BLOCKLIST += zc702 nodma u2_
 ############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/xcl2
-HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp ./src/host.cpp 
+HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp ./src/host.cpp
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
-LDFLAGS += -lrt -lstdc++ 
+LDFLAGS += -lrt -lstdc++
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += --save-temps 
+VPP_FLAGS += --save-temps
 
 EXECUTABLE = ./cl_wide_mem_rw
 EMCONFIG_DIR = $(TEMP_DIR)
@@ -108,6 +108,7 @@ $(BUILD_DIR)/vadd.xclbin: $(TEMP_DIR)/vadd.xo
 ############################## Setting Rules for Host (Building Host Executable) ##############################
 $(EXECUTABLE): $(HOST_SRCS) | check-xrt
 		g++ -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+		ln -sf $(EXECUTABLE) cl_wide_mem_rw_2x
 
 emconfig:$(EMCONFIG_DIR)/emconfig.json
 $(EMCONFIG_DIR)/emconfig.json:
@@ -133,8 +134,8 @@ endif
 ############################## Cleaning Rules ##############################
 # Cleaning stuff
 clean:
-	-$(RMDIR) $(EXECUTABLE) $(XCLBIN)/{*sw_emu*,*hw_emu*} 
-	-$(RMDIR) profile_* TempConfig system_estimate.xtxt *.rpt *.csv 
+	-$(RMDIR) $(EXECUTABLE) $(XCLBIN)/{*sw_emu*,*hw_emu*}
+	-$(RMDIR) profile_* TempConfig system_estimate.xtxt *.rpt *.csv
 	-$(RMDIR) src/*.ll *v++* .Xil emconfig.json dltmp* xmltmp* *.log *.jou *.wcfg *.wdb
 
 cleanall: clean
