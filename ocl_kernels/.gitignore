@@ -30,3 +30,4 @@ cl_wide_mem_rw_4x/cl_wide_mem_rw*
 cl_wide_mem_rw_4x_pipelined/cl_wide_mem_rw*
 cl_wide_mem_rw_strm/cl_wide_mem_rw*
 cl_wide_mem_rw_strm_oversub/cl_wide_mem_rw*
+oh_funkycl/main
