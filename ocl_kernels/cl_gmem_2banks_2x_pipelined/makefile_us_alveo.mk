@@ -51,28 +51,28 @@ BUILD_DIR := ./build_dir.$(TARGET).$(XSA)
 LINK_OUTPUT := $(BUILD_DIR)/apply_watermark.link.xclbin
 PACKAGE_OUT = ./package.$(TARGET)
 
-VPP_PFLAGS := 
+VPP_PFLAGS :=
 CMD_ARGS = -x $(BUILD_DIR)/apply_watermark.xclbin -i $(XF_PROJ_ROOT)/common/data/xilinx_img.bmp -c ./data/golden.bmp
 CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++1y
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 
 ########################## Checking if PLATFORM in allowlist #######################
-PLATFORM_BLOCKLIST += u30 u50 u55 vck zc samsung u2_ x3522pv nodma v70 
+PLATFORM_BLOCKLIST += u30 u50 u55 vck zc samsung u2_ x3522pv nodma v70
 ############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/xcl2
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/cmdparser
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/logger
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/bitmap
-HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp $(XF_PROJ_ROOT)/common/includes/cmdparser/cmdlineparser.cpp $(XF_PROJ_ROOT)/common/includes/logger/logger.cpp $(XF_PROJ_ROOT)/common/includes/bitmap/bitmap.cpp ./src/host.cpp 
+HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp $(XF_PROJ_ROOT)/common/includes/cmdparser/cmdlineparser.cpp $(XF_PROJ_ROOT)/common/includes/logger/logger.cpp $(XF_PROJ_ROOT)/common/includes/bitmap/bitmap.cpp ./src/host.cpp
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
-LDFLAGS += -lrt -lstdc++ 
+LDFLAGS += -lrt -lstdc++
 
 ############################## Setting up Kernel Variables ##############################
 # Kernel compiler global settings
-VPP_FLAGS += 
-VPP_FLAGS += --save-temps 
+VPP_FLAGS +=
+VPP_FLAGS += --save-temps
 VPP_FLAGS_apply_watermark +=  --config ./bandwidth.cfg
 
 
@@ -115,6 +115,7 @@ $(BUILD_DIR)/apply_watermark.xclbin: $(TEMP_DIR)/apply_watermark.xo
 ############################## Setting Rules for Host (Building Host Executable) ##############################
 $(EXECUTABLE): $(HOST_SRCS) | check-xrt
 		g++ -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+		ln -sf $(EXECUTABLE) cl_gmem_2banks_2x_pipelined
 
 emconfig:$(EMCONFIG_DIR)/emconfig.json
 $(EMCONFIG_DIR)/emconfig.json:
@@ -140,12 +141,12 @@ endif
 ############################## Cleaning Rules ##############################
 # Cleaning stuff
 clean:
-	-$(RMDIR) $(EXECUTABLE) $(XCLBIN)/{*sw_emu*,*hw_emu*} 
-	-$(RMDIR) profile_* TempConfig system_estimate.xtxt *.rpt *.csv 
+	-$(RMDIR) $(EXECUTABLE) $(XCLBIN)/{*sw_emu*,*hw_emu*}
+	-$(RMDIR) profile_* TempConfig system_estimate.xtxt *.rpt *.csv
 	-$(RMDIR) src/*.ll *v++* .Xil emconfig.json dltmp* xmltmp* *.log *.jou *.wcfg *.wdb
 
 cleanall: clean
 	-$(RMDIR) build_dir*
 	-$(RMDIR) package.*
 	-$(RMDIR) _x* *xclbin.run_summary qemu-memory-_* emulation _vimage pl* start_simulation.sh *.xclbin
-	-$(RMDIR) ./output.bmp 
+	-$(RMDIR) ./output.bmp
