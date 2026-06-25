@@ -24,8 +24,10 @@ XF_PROJ_ROOT = $(shell readlink -f $(COMMON_REPO))
 ########################## Checking if PLATFORM in allowlist #######################
 PLATFORM_BLOCKLIST += zc702_base nodma 
 PLATFORM ?= xilinx_u250_gen3x16_xdma_4_1_202210_1
+ifneq ($(shell which platforminfo 2>/dev/null),)
 DEV_ARCH := $(shell platforminfo -p $(PLATFORM) | grep 'FPGA Family' | sed 's/.*://' | sed '/ai_engine/d' | sed 's/^[[:space:]]*//')
 CPU_TYPE := $(shell platforminfo -p $(PLATFORM) | grep 'CPU Type' | sed 's/.*://' | sed '/ai_engine/d' | sed 's/^[[:space:]]*//')
+endif
 
 ifeq ($(CPU_TYPE), cortex-a9)
 HOST_ARCH := aarch32
@@ -50,6 +52,23 @@ endif
 else
 include makefile_us_alveo.mk
 endif
+
+############################## NVIDIA GPU Target ##############################
+NVIDIA_CXX      := g++
+NVIDIA_CXXFLAGS := -std=c++14 -O2
+NVIDIA_INC      ?=
+NVIDIA_LIB      ?= -lOpenCL
+
+.PHONY: nvidia run_nvidia clean_nvidia
+
+nvidia: src/host_nvidia.cpp
+	$(NVIDIA_CXX) $(NVIDIA_CXXFLAGS) $(NVIDIA_INC) src/host_nvidia.cpp $(NVIDIA_LIB) -o cl_systolic_array_nvidia
+
+run_nvidia: nvidia
+	./cl_systolic_array_nvidia src/mmult_nvidia.cl
+
+clean_nvidia:
+	rm -f cl_systolic_array_nvidia
 
 ############################## Help Section ##############################
 help:
