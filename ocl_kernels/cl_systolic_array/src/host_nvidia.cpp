@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
     cl::NDRange global(roundUp(a_row, TILE_SIZE), roundUp(b_col, TILE_SIZE));
     cl::NDRange local(TILE_SIZE, TILE_SIZE);
 
-    const int iterations = 65400;
+    const int iterations = 50000;
     cl_ulong ns_to_dev = 0, ns_kernel = 0, ns_to_host = 0;
 
     q.finish();
