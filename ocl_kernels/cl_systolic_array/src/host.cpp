@@ -27,7 +27,6 @@ Description:
 #include "xcl2.hpp"
 #include <vector>
 #include <chrono>
-#include <iomanip>
 
 // Array Size to access
 #define DATA_SIZE 24
@@ -139,59 +138,67 @@ int main(int argc, char** argv) {
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
     cl::Event event_data_to_host;
-    const int iterations = 50000;
-    std::chrono::high_resolution_clock::time_point start_time, end_time;
-    std::chrono::duration<double> duration;
-    int64_t nstime_cpu = 0;
+    const int n_warmup = 0;
+    const int n_reps = 50000;
     uint64_t nstimestart = 0;
     uint64_t nstimeend = 0;
-    uint64_t nstime_kernel_ocl = 0;
-    uint64_t nstime_data_to_fpga_ocl = 0;
-    uint64_t nstime_data_to_host_ocl = 0;
+    uint64_t time_kernel_ocl = 0;
+    uint64_t time_data_to_xpu_ocl = 0;
+    uint64_t time_data_to_host_ocl = 0;
+    // Host-clock accumulator for data-transfer + kernel-execution time only: each interval below
+    // is opened right before an OpenCL enqueue call and closed right after it (and any q.finish())
+    // completes, so host-side work (loop bookkeeping) is never included.
+    uint64_t time_xpu = 0;
 
     // This is required for proper time measurements in Proteus. We add it here
     // as well to have the same host code for Proteus and native.
     q.finish();
 
-    start_time = std::chrono::high_resolution_clock::now();
-
-    for (int i = 0; i < iterations; i++) {
+    for (int i = 0; i < n_warmup + n_reps; i++) {
+        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
         OCL_CHECK(err, err = q.finish());
+        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
+
+        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
         OCL_CHECK(err, err = q.enqueueTask(krnl_systolic_array, nullptr, &event_kernel));
         OCL_CHECK(err, err = q.finish());
+        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
+
+        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
+        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+        time_data_to_xpu_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_kernel_ocl += nstimeend - nstimestart;
+        time_kernel_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_host_ocl += nstimeend - nstimestart;
+        time_data_to_host_ocl += nstimeend - nstimestart;
     }
     // OPENCL HOST CODE AREA END
 
-    end_time = std::chrono::high_resolution_clock::now();
-    duration = std::chrono::duration<double>(end_time - start_time);
-    nstime_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-
-    // CPU time: measured in host code, OCL time: measured using OpenCL profiling, all times in seconds
-    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
-    std::cout << "cl_systolic_array,"
+    double ns_per_s = 1000000000;
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+              << "cl_systolic_array,"
               << matrix_size_bytes * 2 << ","
               << matrix_size_bytes << ","
-              << iterations << ","
-              << std::setprecision(std::numeric_limits<double>::digits10)
-              << nstime_cpu / (double)1'000'000'000 << ","
-              << nstime_data_to_fpga_ocl / (double)1'000'000'000 << ","
-              << nstime_kernel_ocl / (double)1'000'000'000 << ","
-              << nstime_data_to_host_ocl / (double)1'000'000'000 << "\n";
+              << n_warmup << ","
+              << n_reps << ","
+              << time_xpu / ns_per_s << ","
+              << time_data_to_xpu_ocl / ns_per_s << ","
+              << time_kernel_ocl / ns_per_s << ","
+              << time_data_to_host_ocl / ns_per_s
+              << "\n";
 
     // Compute Software Results
     m_softwareGold(source_in1, source_in2, source_sw_results);
