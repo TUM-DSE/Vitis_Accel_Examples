@@ -95,7 +95,7 @@ __kernel __attribute__((reqd_work_group_size(1, 1, 1))) void apply_watermark(__g
             uint tmp_x = x + i;
             uint tmp_y = y;
             // Row Boundary Check for x
-            if (tmp_x > width) {
+            if (tmp_x >= width) {
                 tmp_x = tmp_x - width;
                 tmp_y += 1;
             }
