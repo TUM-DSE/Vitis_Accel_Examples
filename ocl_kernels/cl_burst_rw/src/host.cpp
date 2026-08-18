@@ -14,6 +14,7 @@
 * under the License.
 */
 #include "xcl2.hpp"
+#include <algorithm>
 #include <vector>
 #include <chrono>
 #include <iomanip>
@@ -39,11 +40,18 @@ int main(int argc, char** argv) {
     cl::Kernel krnl_add;
     // Allocate Memory in Host Memory
     size_t vector_size_bytes = sizeof(int) * size;
+    // source_input is the immutable baseline; source_inout is the
+    // CL_MEM_USE_HOST_PTR-backed buffer re-seeded from it every iteration
+    // below, so the kernel's in-place "a[gid] += inc_value" always starts
+    // from the same known state instead of silently drifting further with
+    // every rep (the buffer is both the kernel's input and output).
+    std::vector<int, aligned_allocator<int> > source_input(size);
     std::vector<int, aligned_allocator<int> > source_inout(size);
     std::vector<int, aligned_allocator<int> > source_sw_results(size);
 
     // Create the test data and Software Result
     for (int i = 0; i < size; i++) {
+        source_input[i] = i;
         source_inout[i] = i;
         source_sw_results[i] = i + inc_value;
     }
@@ -106,6 +114,7 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
+        std::copy(source_input.begin(), source_input.end(), source_inout.begin());
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_rw}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
         OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(krnl_add, nullptr, &event_kernel));
