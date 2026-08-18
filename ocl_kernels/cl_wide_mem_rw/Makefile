@@ -51,6 +51,23 @@ else
 include makefile_us_alveo.mk
 endif
 
+############################## NVIDIA GPU Target ##############################
+NVIDIA_CXX      := g++
+NVIDIA_CXXFLAGS := -std=c++14 -O2
+NVIDIA_INC      ?=
+NVIDIA_LIB      ?= -lOpenCL
+
+.PHONY: nvidia run_nvidia clean_nvidia
+
+nvidia: src/host_nvidia.cpp
+	$(NVIDIA_CXX) $(NVIDIA_CXXFLAGS) $(NVIDIA_INC) src/host_nvidia.cpp $(NVIDIA_LIB) -o cl_wide_mem_rw_nvidia
+
+run_nvidia: nvidia
+	./cl_wide_mem_rw_nvidia src/vadd_nvidia.cl
+
+clean_nvidia:
+	rm -f cl_wide_mem_rw_nvidia
+
 ############################## Help Section ##############################
 help:
 	$(ECHO) "Makefile Usage:"

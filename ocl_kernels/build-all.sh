@@ -18,8 +18,14 @@ build() {
 	wait
 }
 
-build cl_systolic_array "make host"
+apps="cl_dataflow_func cl_shift_register cl_systolic_array cl_burst_rw cl_gmem_2banks cl_wide_mem_rw"
+
+for app in $apps; do
+	build "$app" "make host"
+done
 
 if command -v nvcc &> /dev/null; then
-    build cl_systolic_array "make nvidia"
+	for app in $apps; do
+		build "$app" "make nvidia"
+	done
 fi

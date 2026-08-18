@@ -37,6 +37,24 @@ endif
 
 include makefile_us_alveo.mk
 
+############################## NVIDIA GPU Target ##############################
+NVIDIA_CXX      := g++
+NVIDIA_CXXFLAGS := -std=c++14 -O2
+NVIDIA_INC      ?= -I$(XF_PROJ_ROOT)/common/includes/bitmap
+NVIDIA_LIB      ?= -lOpenCL
+BITMAP_SRC      := $(XF_PROJ_ROOT)/common/includes/bitmap/bitmap.cpp
+
+.PHONY: nvidia run_nvidia clean_nvidia
+
+nvidia: src/host_nvidia.cpp $(BITMAP_SRC)
+	$(NVIDIA_CXX) $(NVIDIA_CXXFLAGS) $(NVIDIA_INC) src/host_nvidia.cpp $(BITMAP_SRC) $(NVIDIA_LIB) -o cl_gmem_2banks_nvidia
+
+run_nvidia: nvidia
+	./cl_gmem_2banks_nvidia src/apply_watermark_nvidia.cl
+
+clean_nvidia:
+	rm -f cl_gmem_2banks_nvidia
+
 ############################## Help Section ##############################
 help:
 	$(ECHO) "Makefile Usage:"

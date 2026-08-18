@@ -1,16 +1,22 @@
 # Executables
 cl_array_partition/cl_array_partition
 cl_burst_rw/cl_burst_rw
+cl_burst_rw/cl_burst_rw_nvidia
 cl_dataflow_func/cl_dataflow_func
+cl_dataflow_func/cl_dataflow_func_nvidia
 cl_dataflow_subfunc/cl_dataflow_subfunc
 cl_gmem_2banks/cl_gmem_2banks
+cl_gmem_2banks/cl_gmem_2banks_nvidia
 cl_helloworld/cl_helloworld
 cl_lmem_2rw/cl_lmem_2rw
 cl_loop_reorder/cl_loop_reorder
 cl_partition_cyclicblock/cl_partition_cyclicblock
 cl_shift_register/cl_shift_register
+cl_shift_register/cl_shift_register_nvidia
 cl_systolic_array/cl_systolic_array
+cl_systolic_array/cl_systolic_array_nvidia
 cl_wide_mem_rw/cl_wide_mem_rw
+cl_wide_mem_rw/cl_wide_mem_rw_nvidia
 # Directories created by Intel compiler
 cl_array_partition/array_partition
 cl_burst_rw/burst_rw
