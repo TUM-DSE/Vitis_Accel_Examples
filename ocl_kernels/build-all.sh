@@ -4,8 +4,8 @@ set -euo pipefail
 script_dir=$(dirname "$(readlink -f "$0")")
 
 build() {
-	dir=$1
-	build_cmd=$2
+	local dir=$1
+	local build_cmd=$2
 
 	if [ ! -d "$dir" ]; then
 		echo "Skipping $dir (no such directory)"
@@ -14,8 +14,6 @@ build() {
 
 	echo "Building $dir ($build_cmd)"
 	(cd "$dir" && $build_cmd > /dev/null || echo "building $dir failed") &
-
-	wait
 }
 
 apps="cl_dataflow_func cl_shift_register cl_systolic_array cl_burst_rw cl_gmem_2banks cl_wide_mem_rw"
@@ -23,9 +21,11 @@ apps="cl_dataflow_func cl_shift_register cl_systolic_array cl_burst_rw cl_gmem_2
 for app in $apps; do
 	build "$app" "make host"
 done
+wait
 
 if command -v nvcc &> /dev/null; then
 	for app in $apps; do
 		build "$app" "make nvidia"
 	done
+	wait
 fi
