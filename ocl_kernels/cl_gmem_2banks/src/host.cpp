@@ -14,7 +14,6 @@
 * under the License.
 */
 #include "bitmap.h"
-#include "cmdlineparser.h"
 #include "xcl2.hpp"
 #include <vector>
 #include <iomanip>
@@ -26,21 +25,13 @@
 #define GOLDEN_BMP "data/golden.bmp"
 
 int main(int argc, char* argv[]) {
-    // Command Line Parser
-    sda::utils::CmdLineParser parser;
-
-    // Switches
-    //**************//"<Full Arg>",  "<Short Arg>", "<Description>", "<Default>"
-    parser.addSwitch("--xclbin_file", "-x", "input binary file string", "");
-    parser.parse(argc, argv);
-
-    // Read settings
-    auto binaryFile = parser.value("xclbin_file");
-
-    if (argc != 3) {
-        parser.printHelp();
+    if (argc != 2) {
+        std::cout << "Usage: " << argv[0] << " <XCLBIN File>" << std::endl;
         return EXIT_FAILURE;
     }
+
+    std::string binaryFile = argv[1];
+
     cl_int err;
     cl::CommandQueue q;
     cl::Context context;

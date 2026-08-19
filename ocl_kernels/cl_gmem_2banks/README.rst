@@ -58,7 +58,7 @@ Once the environment has been configured, the application can be executed by
 
 ::
 
-   ./cl_gmem_2banks -x <apply_watermark XCLBIN>
+   ./cl_gmem_2banks <apply_watermark XCLBIN>
 
 DETAILS
 -------

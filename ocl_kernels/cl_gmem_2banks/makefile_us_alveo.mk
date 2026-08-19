@@ -52,7 +52,7 @@ LINK_OUTPUT := $(BUILD_DIR)/apply_watermark.link.xclbin
 PACKAGE_OUT = ./package.$(TARGET)
 
 VPP_PFLAGS := 
-CMD_ARGS = -x $(BUILD_DIR)/apply_watermark.xclbin
+CMD_ARGS = $(BUILD_DIR)/apply_watermark.xclbin
 CXXFLAGS += -I$(XILINX_XRT)/include -I$(XILINX_VIVADO)/include -Wall -O0 -g -std=c++1y
 LDFLAGS += -L$(XILINX_XRT)/lib -pthread -lOpenCL
 
@@ -61,10 +61,8 @@ PLATFORM_BLOCKLIST += u30 u50 u55 vck zc samsung u2_ x3522pv nodma v70
 ############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/xcl2
-CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/cmdparser
-CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/logger
 CXXFLAGS += -I$(XF_PROJ_ROOT)/common/includes/bitmap
-HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp $(XF_PROJ_ROOT)/common/includes/cmdparser/cmdlineparser.cpp $(XF_PROJ_ROOT)/common/includes/logger/logger.cpp $(XF_PROJ_ROOT)/common/includes/bitmap/bitmap.cpp ./src/host.cpp 
+HOST_SRCS += $(XF_PROJ_ROOT)/common/includes/xcl2/xcl2.cpp $(XF_PROJ_ROOT)/common/includes/bitmap/bitmap.cpp ./src/host.cpp 
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
 LDFLAGS += -lrt -lstdc++ 
