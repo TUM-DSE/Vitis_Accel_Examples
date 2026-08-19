@@ -69,7 +69,10 @@ int main(int argc, char** argv) {
     cl::Kernel kernel(program, "vadd");
 
     const int data_size = DATA_SIZE;
-    const int size_in16 = data_size / VECTOR_SIZE;
+    // The kernel argument is the size in ints, the same convention the FPGA
+    // kernel uses; the kernel converts it to a uint16 count itself. Only the
+    // NDRange is sized in vectors, since it needs one work-item per uint16 word.
+    const int size_in16 = (data_size - 1) / VECTOR_SIZE + 1;
     const size_t vector_size_bytes = sizeof(int) * data_size;
 
     std::vector<int> source_in1(data_size), source_in2(data_size);
@@ -88,7 +91,7 @@ int main(int argc, char** argv) {
     kernel.setArg(0, buffer_in1);
     kernel.setArg(1, buffer_in2);
     kernel.setArg(2, buffer_out);
-    kernel.setArg(3, size_in16);
+    kernel.setArg(3, data_size);
 
     cl::NDRange global(roundUp(size_in16, LOCAL_SIZE));
     cl::NDRange local(LOCAL_SIZE);

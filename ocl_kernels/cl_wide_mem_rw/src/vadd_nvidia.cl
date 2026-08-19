@@ -1,6 +1,8 @@
 // Number of work-items per work-group used at kernel-launch time (see
 // host_nvidia.cpp).
 #define LOCAL_SIZE 256
+// using uint16 datatype so vector size is 16
+#define VECTOR_SIZE 16
 
 // GPU analog of the FPGA wide-memory-access kernel (vadd.cl). There, a
 // single work-item streams the whole vector through on-chip local buffers
@@ -18,7 +20,12 @@
 __kernel __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1))) void vadd(__global const uint16* restrict in1,
                                                                             __global const uint16* restrict in2,
                                                                             __global uint16* restrict out,
-                                                                            int size_in16) {
+                                                                            int size) {
+    // Same convention as the FPGA kernel (vadd.cl): the argument is the size in
+    // ints and the kernel converts it to a uint16 count itself, so both kernels
+    // can be driven by the same host code.
+    int size_in16 = (size - 1) / VECTOR_SIZE + 1;
+
     int gid = get_global_id(0);
     if (gid < size_in16) {
         out[gid] = in1[gid] + in2[gid];
