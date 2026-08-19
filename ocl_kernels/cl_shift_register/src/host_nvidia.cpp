@@ -122,88 +122,110 @@ int main(int argc, char** argv) {
     cl::NDRange global(global_size);
     cl::NDRange local(LOCAL_SIZE);
 
-    const int iterations = 1000;
-    cl_ulong ns_to_dev = 0, ns_kernel = 0, ns_to_host = 0;
+    const int n_warmup = 0;
+    const int n_reps = 1000;
+    uint64_t time_kernel_ocl = 0;
+    uint64_t time_data_to_xpu_ocl = 0;
+    uint64_t time_data_to_host_ocl = 0;
+    // Host-clock accumulator for data-transfer + kernel-execution time only: each interval below
+    // is opened right before an OpenCL enqueue call and closed right after it (and any q.finish())
+    // completes, so host-side work (loop bookkeeping) is never included.
+    uint64_t time_xpu = 0;
 
     q.finish();
-    auto t0 = std::chrono::high_resolution_clock::now();
 
-    // Running fir_naive for iterations/2 runs
-    for (int iter = 0; iter < iterations / 2; iter++) {
+    // Running fir_naive for half of the reps
+    for (int iter = 0; iter < (n_warmup + n_reps) / 2; iter++) {
         cl::Event ev_s, ev_c, ev_k, ev_r;
 
+        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
         q.enqueueWriteBuffer(buf_signal_A, CL_FALSE, 0, size_in_bytes, signal.data(), nullptr, &ev_s);
         q.enqueueWriteBuffer(buf_coeff_A, CL_FALSE, 0, coeff_size_in_bytes, coeff.data(), nullptr, &ev_c);
         q.finish();
+        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
 
+        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
         q.enqueueNDRangeKernel(krnl_naive, cl::NullRange, global, local, nullptr, &ev_k);
         q.finish();
+        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
+        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
         q.enqueueReadBuffer(buf_output_A, CL_FALSE, 0, size_in_bytes, out_naive.data(), nullptr, &ev_r);
         q.finish();
+        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
 
         cl_ulong s, e;
         ev_s.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_s.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_dev += e - s;
+        time_data_to_xpu_ocl += e - s;
         ev_c.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_c.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_dev += e - s;
+        time_data_to_xpu_ocl += e - s;
 
         ev_k.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_k.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_kernel += e - s;
+        time_kernel_ocl += e - s;
 
         ev_r.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_r.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_host += e - s;
+        time_data_to_host_ocl += e - s;
     }
 
-    // Running fir_shift_register for iterations/2 runs
-    for (int iter = 0; iter < iterations / 2; iter++) {
+    // Running fir_shift_register for the other half of the reps
+    for (int iter = 0; iter < (n_warmup + n_reps) / 2; iter++) {
         cl::Event ev_s, ev_c, ev_k, ev_r;
 
+        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
         q.enqueueWriteBuffer(buf_signal_B, CL_FALSE, 0, size_in_bytes, signal.data(), nullptr, &ev_s);
         q.enqueueWriteBuffer(buf_coeff_B, CL_FALSE, 0, coeff_size_in_bytes, coeff.data(), nullptr, &ev_c);
         q.finish();
+        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
 
+        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
         q.enqueueNDRangeKernel(krnl_sr, cl::NullRange, global, local, nullptr, &ev_k);
         q.finish();
+        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
+        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
         q.enqueueReadBuffer(buf_output_B, CL_FALSE, 0, size_in_bytes, out_sr.data(), nullptr, &ev_r);
         q.finish();
+        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
 
         cl_ulong s, e;
         ev_s.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_s.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_dev += e - s;
+        time_data_to_xpu_ocl += e - s;
         ev_c.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_c.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_dev += e - s;
+        time_data_to_xpu_ocl += e - s;
 
         ev_k.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_k.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_kernel += e - s;
+        time_kernel_ocl += e - s;
 
         ev_r.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_r.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_host += e - s;
+        time_data_to_host_ocl += e - s;
     }
 
-    auto t1 = std::chrono::high_resolution_clock::now();
-    int64_t ns_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-
-    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,"
-                 "time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
-    std::cout << "cl_shift_register_nvidia,"
+    double ns_per_s = 1000000000;
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+              << "cl_shift_register,"
               << size_in_bytes + coeff_size_in_bytes << ","
               << size_in_bytes << ","
-              << iterations << ","
-              << std::setprecision(std::numeric_limits<double>::digits10)
-              << ns_cpu    / 1e9 << ","
-              << ns_to_dev / 1e9 << ","
-              << ns_kernel / 1e9 << ","
-              << ns_to_host / 1e9 << "\n";
+              << n_warmup << ","
+              << n_reps << ","
+              << time_xpu / ns_per_s << ","
+              << time_data_to_xpu_ocl / ns_per_s << ","
+              << time_kernel_ocl / ns_per_s << ","
+              << time_data_to_host_ocl / ns_per_s
+              << "\n";
 
     int match = 0;
     for (int i = 0; i < signal_size; i++) {

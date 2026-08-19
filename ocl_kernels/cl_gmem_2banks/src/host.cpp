@@ -118,13 +118,19 @@ int main(int argc, char* argv[]) {
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
     cl::Event event_data_to_host;
-    const int iterations = 500;
+    const int n_warmup = 0;
+    const int n_reps = 500;
     uint64_t nstimestart = 0;
     uint64_t nstimeend = 0;
-    uint64_t nstime_kernel = 0;
-    uint64_t nstime_data_to_fpga = 0;
-    uint64_t nstime_data_to_host = 0;
+    uint64_t time_kernel_ocl = 0;
+    uint64_t time_data_to_xpu_ocl = 0;
+    uint64_t time_data_to_host_ocl = 0;
+    // Host-clock accumulator for data-transfer + kernel-execution time only: each interval below
+    // is opened right before an OpenCL enqueue call and closed right after it (and any q.finish())
+    // completes, so host-side work (loop bookkeeping) is never included.
+    uint64_t time_xpu = 0;
 
+    // Per-phase host-clock times, kept for the throughput numbers printed below
     std::chrono::duration<double> to_fpga_time(0);
     std::chrono::duration<double> kernel_time(0);
     std::chrono::duration<double> from_fpga_time(0);
@@ -133,66 +139,67 @@ int main(int argc, char* argv[]) {
     // as well to have the same host code for Proteus and native.
     q.finish();
 
-    auto loop_start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < iterations; i++) {
-
-        auto to_fpga_start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < n_warmup + n_reps; i++) {
+        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
         // Copy input Image to device global memory
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_inImage}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
         OCL_CHECK(err, err = q.finish());
-        auto to_fpga_end = std::chrono::high_resolution_clock::now();
+        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
 
-        auto kernel_start = std::chrono::high_resolution_clock::now();
+        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
         // Launch the Kernel
         OCL_CHECK(err, err = q.enqueueTask(krnl_applyWatermark, nullptr, &event_kernel));
         OCL_CHECK(err, err = q.finish());
-        auto kernel_end = std::chrono::high_resolution_clock::now();
+        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
-        auto from_fpga_start = std::chrono::high_resolution_clock::now();
+        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
         // Copy Result from Device Global Memory to Host Local Memory
         OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_outImage}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
-        auto from_fpga_end = std::chrono::high_resolution_clock::now();
+        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_fpga += nstimeend - nstimestart;
+        time_data_to_xpu_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_kernel += nstimeend - nstimestart;
+        time_kernel_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
-        nstime_data_to_host += nstimeend - nstimestart;
+        time_data_to_host_ocl += nstimeend - nstimestart;
 
-        to_fpga_time += std::chrono::duration<double>(to_fpga_end - to_fpga_start);
-        kernel_time += std::chrono::duration<double>(kernel_end - kernel_start);
-        from_fpga_time += std::chrono::duration<double>(from_fpga_end - from_fpga_start);
+        to_fpga_time += std::chrono::duration<double>(t_xpu_1 - t_xpu_0);
+        kernel_time += std::chrono::duration<double>(t_xpu_3 - t_xpu_2);
+        from_fpga_time += std::chrono::duration<double>(t_xpu_5 - t_xpu_4);
     }
     // OPENCL HOST CODE AREA END
-    auto loop_end   = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> total_loop_time(0);
-    auto total_loop_time = std::chrono::duration<double>(loop_end - loop_start);
 
-    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
-    std::cout << "cl_gmem_2banks,"
+    double ns_per_s = 1000000000;
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+              << "cl_gmem_2banks,"
               << image_size_bytes << ","
               << image_size_bytes << ","
-              << iterations << ","
-              << std::setprecision(std::numeric_limits<double>::digits10)
-              << total_loop_time.count() << ","
-              << nstime_data_to_fpga / (double)1'000'000'000 << ","
-              << nstime_kernel / (double)1'000'000'000 << ","
-              << nstime_data_to_host / (double)1'000'000'000 << "\n";
+              << n_warmup << ","
+              << n_reps << ","
+              << time_xpu / ns_per_s << ","
+              << time_data_to_xpu_ocl / ns_per_s << ","
+              << time_kernel_ocl / ns_per_s << ","
+              << time_data_to_host_ocl / ns_per_s
+              << "\n";
 
     // Throughputs
+    const int n_total = n_warmup + n_reps;
     std::cout << "app_name,PCIe_Wr[GB/s],Kernel[GB/s],PCIe_Rd[GB/s],FPGA_exec_time[s],FPGA_reconf_time[s]\n";
     std::cout << "cl_gmem_2banks,"
-              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / to_fpga_time.count())   / 1000000000 << ","
-              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations * 2 / kernel_time.count()) / 1000000000 << ","
-              << std::setprecision(3) << std::fixed << (image_size_bytes * iterations / from_fpga_time.count()) / 1000000000 << ","
-              << total_loop_time.count() << ","
+              << std::setprecision(3) << std::fixed << (image_size_bytes * n_total / to_fpga_time.count())   / 1000000000 << ","
+              << std::setprecision(3) << std::fixed << (image_size_bytes * n_total * 2 / kernel_time.count()) / 1000000000 << ","
+              << std::setprecision(3) << std::fixed << (image_size_bytes * n_total / from_fpga_time.count()) / 1000000000 << ","
+              << time_xpu / ns_per_s << ","
               << reconf_time.count() << ","
               << std::endl;
 

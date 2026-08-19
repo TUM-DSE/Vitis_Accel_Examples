@@ -92,52 +92,65 @@ int main(int argc, char** argv) {
     cl::NDRange global(roundUp(data_size, LOCAL_SIZE));
     cl::NDRange local(LOCAL_SIZE);
 
-    const int iterations = 1000;
-    cl_ulong ns_to_dev = 0, ns_kernel = 0, ns_to_host = 0;
+    const int n_warmup = 0;
+    const int n_reps = 1000;
+    uint64_t time_kernel_ocl = 0;
+    uint64_t time_data_to_xpu_ocl = 0;
+    uint64_t time_data_to_host_ocl = 0;
+    // Host-clock accumulator for data-transfer + kernel-execution time only: each interval below
+    // is opened right before an OpenCL enqueue call and closed right after it (and any q.finish())
+    // completes, so host-side work (loop bookkeeping) is never included.
+    uint64_t time_xpu = 0;
 
     q.finish();
-    auto t0 = std::chrono::high_resolution_clock::now();
 
-    for (int iter = 0; iter < iterations; iter++) {
+    for (int iter = 0; iter < n_warmup + n_reps; iter++) {
         cl::Event ev_in, ev_k, ev_out;
 
+        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
         q.enqueueWriteBuffer(buffer_input, CL_FALSE, 0, vector_size_bytes, source_input.data(), nullptr, &ev_in);
         q.finish();
+        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
 
+        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
         q.enqueueNDRangeKernel(kernel, cl::NullRange, global, local, nullptr, &ev_k);
         q.finish();
+        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
+        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
         q.enqueueReadBuffer(buffer_output, CL_FALSE, 0, vector_size_bytes, source_hw_results.data(), nullptr, &ev_out);
         q.finish();
+        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
+        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
 
         cl_ulong s, e;
         ev_in.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_in.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_dev += e - s;
+        time_data_to_xpu_ocl += e - s;
 
         ev_k.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_k.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_kernel += e - s;
+        time_kernel_ocl += e - s;
 
         ev_out.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
         ev_out.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        ns_to_host += e - s;
+        time_data_to_host_ocl += e - s;
     }
 
-    auto t1 = std::chrono::high_resolution_clock::now();
-    int64_t ns_cpu = std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-
-    std::cout << "app_name,kernel_input_data_size,kernel_output_data_size,iterations,"
-                 "time_cpu,data_to_fpga_time_ocl,kernel_time_ocl,data_to_host_time_ocl\n";
-    std::cout << "cl_dataflow_func_nvidia,"
+    double ns_per_s = 1000000000;
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+              << "cl_dataflow_func,"
               << vector_size_bytes << ","
               << vector_size_bytes << ","
-              << iterations << ","
-              << std::setprecision(std::numeric_limits<double>::digits10)
-              << ns_cpu    / 1e9 << ","
-              << ns_to_dev / 1e9 << ","
-              << ns_kernel / 1e9 << ","
-              << ns_to_host / 1e9 << "\n";
+              << n_warmup << ","
+              << n_reps << ","
+              << time_xpu / ns_per_s << ","
+              << time_data_to_xpu_ocl / ns_per_s << ","
+              << time_kernel_ocl / ns_per_s << ","
+              << time_data_to_host_ocl / ns_per_s
+              << "\n";
 
     int match = 0;
     for (int i = 0; i < data_size; i++) {
