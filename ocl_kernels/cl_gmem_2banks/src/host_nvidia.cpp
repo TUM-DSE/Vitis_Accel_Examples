@@ -14,11 +14,17 @@
 #define LOCAL_SIZE_X 16
 #define LOCAL_SIZE_Y 16
 
+// Input image and golden reference are fixed, not passed on the command line.
+// Both are relative to the example directory the executable is run from, which
+// is what "make run" / "make run_nvidia" do.
+#define INPUT_BMP "../../common/data/xilinx_img.bmp"
+#define GOLDEN_BMP "data/golden.bmp"
+
 static int roundUp(int n, int m) { return ((n + m - 1) / m) * m; }
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 4) {
-        std::cout << "Usage: " << argv[0] << " <apply_watermark_nvidia.cl> [input.bmp] [golden.bmp]" << std::endl;
+    if (argc != 2) {
+        std::cout << "Usage: " << argv[0] << " <apply_watermark_nvidia.cl>" << std::endl;
         return EXIT_FAILURE;
     }
 
@@ -29,20 +35,16 @@ int main(int argc, char** argv) {
     }
     std::string src((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 
-    // Same input image and expected-output image the FPGA flow uses (see
-    // description.json's launch cmd_args: -i REPO_DIR/common/data/xilinx_img.bmp
-    // -c PROJECT/data/golden.bmp), read with the same BitmapInterface helper.
-    std::string input_path = (argc > 2) ? argv[2] : "../../common/data/xilinx_img.bmp";
-    std::string golden_path = (argc > 3) ? argv[3] : "data/golden.bmp";
-
-    BitmapInterface inputImage(input_path.c_str());
+    // Same input image and expected-output image the FPGA flow uses, read with
+    // the same BitmapInterface helper.
+    BitmapInterface inputImage(INPUT_BMP);
     if (!inputImage.readBitmapFile()) {
-        std::cerr << "ERROR: Unable to read input bitmap file " << input_path << std::endl;
+        std::cerr << "ERROR: Unable to read input bitmap file " << INPUT_BMP << std::endl;
         return EXIT_FAILURE;
     }
-    BitmapInterface goldenImage(golden_path.c_str());
+    BitmapInterface goldenImage(GOLDEN_BMP);
     if (!goldenImage.readBitmapFile()) {
-        std::cerr << "ERROR: Unable to read golden bitmap file " << golden_path << std::endl;
+        std::cerr << "ERROR: Unable to read golden bitmap file " << GOLDEN_BMP << std::endl;
         return EXIT_FAILURE;
     }
     if (inputImage.getWidth() != goldenImage.getWidth() || inputImage.getHeight() != goldenImage.getHeight()) {

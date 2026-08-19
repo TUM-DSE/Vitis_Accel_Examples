@@ -19,6 +19,12 @@
 #include <vector>
 #include <iomanip>
 
+// Input image and golden reference are fixed, not passed on the command line.
+// Both are relative to the example directory the executable is run from, which
+// is what "make run" / "make run_nvidia" do.
+#define INPUT_BMP "../../common/data/xilinx_img.bmp"
+#define GOLDEN_BMP "data/golden.bmp"
+
 int main(int argc, char* argv[]) {
     // Command Line Parser
     sda::utils::CmdLineParser parser;
@@ -26,16 +32,12 @@ int main(int argc, char* argv[]) {
     // Switches
     //**************//"<Full Arg>",  "<Short Arg>", "<Description>", "<Default>"
     parser.addSwitch("--xclbin_file", "-x", "input binary file string", "");
-    parser.addSwitch("--input_file", "-i", "input test data file", "");
-    parser.addSwitch("--compare_file", "-c", "Compare File to compare result", "");
     parser.parse(argc, argv);
 
     // Read settings
     auto binaryFile = parser.value("xclbin_file");
-    std::string bitmapFilename = parser.value("input_file");
-    std::string goldenFilename = parser.value("compare_file");
 
-    if (argc != 7) {
+    if (argc != 3) {
         parser.printHelp();
         return EXIT_FAILURE;
     }
@@ -45,10 +47,10 @@ int main(int argc, char* argv[]) {
     cl::Kernel krnl_applyWatermark;
 
     // Read the input bit map file into memory
-    BitmapInterface image(bitmapFilename.data());
+    BitmapInterface image(INPUT_BMP);
     bool result = image.readBitmapFile();
     if (!result) {
-        std::cerr << "ERROR:Unable to Read Input Bitmap File " << bitmapFilename.data() << std::endl;
+        std::cerr << "ERROR:Unable to Read Input Bitmap File " << INPUT_BMP << std::endl;
         return EXIT_FAILURE;
     }
     auto width = image.getWidth();
@@ -206,10 +208,10 @@ int main(int argc, char* argv[]) {
     // Compare Golden Image with Output image
     bool match = 1;
     // Read the golden bit map file into memory
-    // BitmapInterface goldenImage(goldenFilename.data());
+    // BitmapInterface goldenImage(GOLDEN_BMP);
     // result = goldenImage.readBitmapFile();
     // if (!result) {
-    //     std::cerr << "ERROR:Unable to Read Golden Bitmap File " << goldenFilename.data() << std::endl;
+    //     std::cerr << "ERROR:Unable to Read Golden Bitmap File " << GOLDEN_BMP << std::endl;
     //     return EXIT_FAILURE;
     // }
     // if (image.getHeight() != goldenImage.getHeight() || image.getWidth() != goldenImage.getWidth()) {
