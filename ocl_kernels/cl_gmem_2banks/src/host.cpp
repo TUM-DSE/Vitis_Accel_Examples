@@ -85,10 +85,14 @@ int main(int argc, char* argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    OCL_CHECK(err, cl::Buffer buffer_inImage(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, image_size_bytes,
-                                             inputImage.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_outImage(context, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, image_size_bytes,
-                                              outImage.data(), &err));
+    // Device-only buffers: the transfers below are explicit, so the buffers must not
+    // be backed by host memory. The Funky backend force-adds CL_MEM_USE_HOST_PTR
+    // whenever a host pointer reaches it, which would turn each transfer into a
+    // host-side copy instead of a real device transfer.
+    OCL_CHECK(err, cl::Buffer buffer_inImage(context, CL_MEM_READ_ONLY, image_size_bytes,
+                                             nullptr, &err));
+    OCL_CHECK(err, cl::Buffer buffer_outImage(context, CL_MEM_WRITE_ONLY, image_size_bytes,
+                                              nullptr, &err));
 
     /*
      * Using setArg(), i.e. setting kernel arguments, explicitly before
@@ -126,7 +130,8 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < n_warmup + n_reps; i++) {
         auto t_xpu_0 = std::chrono::high_resolution_clock::now();
         // Copy input Image to device global memory
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_inImage}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_inImage, CL_FALSE, 0, image_size_bytes,
+                                                  inputImage.data(), nullptr, &event_data_to_fpga));
         OCL_CHECK(err, err = q.finish());
         auto t_xpu_1 = std::chrono::high_resolution_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
@@ -140,7 +145,8 @@ int main(int argc, char* argv[]) {
 
         auto t_xpu_4 = std::chrono::high_resolution_clock::now();
         // Copy Result from Device Global Memory to Host Local Memory
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_outImage}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_outImage, CL_FALSE, 0, image_size_bytes,
+                                                 outImage.data(), nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
         auto t_xpu_5 = std::chrono::high_resolution_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();

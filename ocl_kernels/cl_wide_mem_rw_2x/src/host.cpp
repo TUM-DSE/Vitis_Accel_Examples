@@ -144,6 +144,10 @@ int main(int argc, char** argv) {
     }
 
     // Allocate Buffer in Global Memory
+    // Unlike the other examples, these buffers keep CL_MEM_EXT_PTR_XILINX |
+    // CL_MEM_USE_HOST_PTR: the per-CU memory-bank assignment carried in the
+    // cl_mem_ext_ptr_t structs is what this example exists to demonstrate, and it
+    // requires the extension pointer. The transfers below are still explicit.
     size_t vector_size_bytes = sizeof(int) * DATA_SIZE;
     std::vector<cl::Buffer> buffer_in1(num_cu);
     std::vector<cl::Buffer> buffer_in2(num_cu);
@@ -172,6 +176,7 @@ int main(int argc, char** argv) {
 
     std::vector<cl::Event> event_kernel(num_cu);
     std::vector<cl::Event> event_data_to_fpga(num_cu);
+    std::vector<cl::Event> event_data_to_fpga_2(num_cu);
     std::vector<cl::Event> event_data_to_host(num_cu);
     const int iterations = 1000;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
@@ -197,7 +202,12 @@ int main(int argc, char** argv) {
 
         auto to_fpga_start = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < num_cu; i++) {
-          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1[i], buffer_in2[i]}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga[i]));
+          OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_in1[i], CL_FALSE, 0, vector_size_bytes,
+                                                    source_in1.data() + (i * DATA_SIZE), nullptr,
+                                                    &event_data_to_fpga[i]));
+          OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_in2[i], CL_FALSE, 0, vector_size_bytes,
+                                                    source_in2.data() + (i * DATA_SIZE), nullptr,
+                                                    &event_data_to_fpga_2[i]));
         }
         OCL_CHECK(err, err = q.finish());
         auto to_fpga_end = std::chrono::high_resolution_clock::now();
@@ -213,7 +223,9 @@ int main(int argc, char** argv) {
         auto from_fpga_start = std::chrono::high_resolution_clock::now();
         // Copy result from device global memory to host local memory
         for (int i = 0; i < num_cu; i++) {
-          OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output[i]}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host[i]));
+          OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_output[i], CL_FALSE, 0, vector_size_bytes,
+                                                   source_hw_results.data() + (i * DATA_SIZE), nullptr,
+                                                   &event_data_to_host[i]));
         }
         OCL_CHECK(err, err = q.finish());
         auto from_fpga_end = std::chrono::high_resolution_clock::now();
@@ -221,6 +233,10 @@ int main(int argc, char** argv) {
         for (int i = 0; i < num_cu; i++) {
           OCL_CHECK(err, err = event_data_to_fpga[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
           OCL_CHECK(err, err = event_data_to_fpga[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+          nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+          OCL_CHECK(err, err = event_data_to_fpga_2[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+          OCL_CHECK(err, err = event_data_to_fpga_2[i].getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
           nstime_data_to_fpga_ocl += nstimeend - nstimestart;
         }
 

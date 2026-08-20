@@ -83,12 +83,16 @@ int main(int argc, char** argv) {
     // be used to reference the memory locations on the device. The cl::Buffer
     // object cannot be referenced directly and must be passed to other OpenCL
     // functions.
-    OCL_CHECK(err, cl::Buffer buffer_a(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, size_in_bytes, source_a.data(),
-                                       &err));
-    OCL_CHECK(err, cl::Buffer buffer_b(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, size_in_bytes, source_b.data(),
-                                       &err));
-    OCL_CHECK(err, cl::Buffer buffer_result(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, size_in_bytes,
-                                            source_results.data(), &err));
+    // Device-only buffers: the transfers below are explicit, so the buffers must not
+    // be backed by host memory. The Funky backend force-adds CL_MEM_USE_HOST_PTR
+    // whenever a host pointer reaches it, which would turn each transfer into a
+    // host-side copy instead of a real device transfer.
+    OCL_CHECK(err, cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, size_in_bytes,
+                                       nullptr, &err));
+    OCL_CHECK(err, cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, size_in_bytes,
+                                       nullptr, &err));
+    OCL_CHECK(err, cl::Buffer buffer_result(context, CL_MEM_WRITE_ONLY, size_in_bytes,
+                                            nullptr, &err));
 
     // set the kernel Arguments
     int narg = 0;
@@ -99,6 +103,7 @@ int main(int argc, char** argv) {
 
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
+    cl::Event event_data_to_fpga_2;
     cl::Event event_data_to_host;
     const int iterations = 1000;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
@@ -117,15 +122,23 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_a, buffer_b}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, size_in_bytes,
+                                                  source_a.data(), nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, size_in_bytes,
+                                                  source_b.data(), nullptr, &event_data_to_fpga_2));
         OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, nullptr, &event_kernel));
         OCL_CHECK(err, err = q.finish());
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_result}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_result, CL_FALSE, 0, size_in_bytes,
+                                                 source_results.data(), nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
         nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));

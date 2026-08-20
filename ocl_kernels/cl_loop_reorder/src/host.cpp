@@ -115,12 +115,16 @@ int main(int argc, char** argv) {
     }
 
     // Allocate Buffer in Global Memory
-    OCL_CHECK(err, cl::Buffer buffer_in1(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, matrix_size_bytes,
-                                         source_in1.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, matrix_size_bytes,
-                                         source_in2.data(), &err));
-    OCL_CHECK(err, cl::Buffer buffer_output(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, matrix_size_bytes,
-                                            source_hw_results.data(), &err));
+    // Device-only buffers: the transfers below are explicit, so the buffers must not
+    // be backed by host memory. The Funky backend force-adds CL_MEM_USE_HOST_PTR
+    // whenever a host pointer reaches it, which would turn each transfer into a
+    // host-side copy instead of a real device transfer.
+    OCL_CHECK(err, cl::Buffer buffer_in1(context, CL_MEM_READ_ONLY, matrix_size_bytes,
+                                         nullptr, &err));
+    OCL_CHECK(err, cl::Buffer buffer_in2(context, CL_MEM_READ_ONLY, matrix_size_bytes,
+                                         nullptr, &err));
+    OCL_CHECK(err, cl::Buffer buffer_output(context, CL_MEM_WRITE_ONLY, matrix_size_bytes,
+                                            nullptr, &err));
 
     int size = DATA_SIZE;
 
@@ -131,6 +135,7 @@ int main(int argc, char** argv) {
 
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
+    cl::Event event_data_to_fpga_2;
     cl::Event event_data_to_host;
     const int iterations = 16000;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
@@ -149,15 +154,23 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations; i++) {
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_in1, CL_FALSE, 0, matrix_size_bytes,
+                                                  source_in1.data(), nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_in2, CL_FALSE, 0, matrix_size_bytes,
+                                                  source_in2.data(), nullptr, &event_data_to_fpga_2));
         OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(krnl_loop_reorder, nullptr, &event_kernel));
         OCL_CHECK(err, err = q.finish());
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_output, CL_FALSE, 0, matrix_size_bytes,
+                                                 source_hw_results.data(), nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
         nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));

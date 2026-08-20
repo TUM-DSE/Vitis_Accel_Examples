@@ -247,6 +247,7 @@ int main(int argc, char** argv) {
 
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
+    cl::Event event_data_to_fpga_2;
     cl::Event event_data_to_host;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     std::chrono::duration<double> duration;
@@ -263,6 +264,7 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < iterations; i++) {
             std::vector<cl::Event> kernel_events(2);
             std::vector<cl::Event> to_fpga_events(2);
+            std::vector<cl::Event> to_fpga_events_2(2);
             std::vector<cl::Event> to_host_events(2);
             cl::Buffer buffer_in1[2];
             cl::Buffer buffer_in2[2];
@@ -303,6 +305,12 @@ int main(int argc, char** argv) {
                                        CL_PROFILING_COMMAND_END, &nstimeend));
                     nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
+                    OCL_CHECK(err, err = to_fpga_events_2[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_START, &nstimestart));
+                    OCL_CHECK(err, err = to_fpga_events_2[flag].getProfilingInfo<uint64_t>(
+                                       CL_PROFILING_COMMAND_END, &nstimeend));
+                    nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
                     OCL_CHECK(err, err = kernel_events[flag].getProfilingInfo<uint64_t>(
                                        CL_PROFILING_COMMAND_START, &nstimestart));
                     OCL_CHECK(err, err = kernel_events[flag].getProfilingInfo<uint64_t>(
@@ -322,32 +330,36 @@ int main(int argc, char** argv) {
                 }
                 auto buf_offset = i * chunk_size / sizeof(int);
 
-                // Without DDR optimization, don't assign memory banks
-                void* buffer_in1_data = source_in1.data() + buf_offset;
-                void* buffer_in2_data = source_in2.data() + buf_offset;
-                void* buffer_out_data = source_hw_results.data() + buf_offset;
+                // Without DDR optimization, don't assign memory banks. The transfers below
+                // are explicit, so the buffers must not be backed by host memory, otherwise
+                // the runtime can satisfy each transfer from the buffer's own backing store
+                // instead of moving data across the bus.
+                void* buffer_in1_data = nullptr;
+                void* buffer_in2_data = nullptr;
+                void* buffer_out_data = nullptr;
                 int ext_flag = 0;
 
-                // With DDR optimization, use cl_mem_ext_ptr_t to assign memory banks
+                // With DDR optimization, use cl_mem_ext_ptr_t to assign memory banks. The
+                // extension pointer requires CL_MEM_USE_HOST_PTR, so it comes back here.
                 if (ddr_opt) {
                     buffer_in1_ext[flag].obj = source_in1.data() + buf_offset;
                     buffer_in2_ext[flag].obj = source_in2.data() + buf_offset;
                     buffer_out_ext[flag].obj = source_hw_results.data() + buf_offset;
 
-                    ext_flag = CL_MEM_EXT_PTR_XILINX;
+                    ext_flag = CL_MEM_EXT_PTR_XILINX | CL_MEM_USE_HOST_PTR;
                     buffer_in1_data = &buffer_in1_ext[flag];
                     buffer_in2_data = &buffer_in2_ext[flag];
                     buffer_out_data = &buffer_out_ext[flag];
                 }
 
                 OCL_CHECK(err, buffer_in1[flag] = cl::Buffer(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | ext_flag,
+                                   context, CL_MEM_READ_ONLY | ext_flag,
                                    cur_chunk_size, buffer_in1_data, &err));
                 OCL_CHECK(err, buffer_in2[flag] = cl::Buffer(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY | ext_flag,
+                                   context, CL_MEM_READ_ONLY | ext_flag,
                                    cur_chunk_size, buffer_in2_data, &err));
                 OCL_CHECK(err, buffer_out[flag] = cl::Buffer(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY | ext_flag,
+                                   context, CL_MEM_WRITE_ONLY | ext_flag,
                                    cur_chunk_size, buffer_out_data, &err));
 
                 int nargs = 0;
@@ -357,19 +369,24 @@ int main(int argc, char** argv) {
                 OCL_CHECK(err, err = krnl_vector_add.setArg(nargs++,
                                                             (int)(cur_chunk_size / sizeof(int))));
 
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-                                   {buffer_in1[flag], buffer_in2[flag]}, 0 /* 0 means from host*/,
-                                   nullptr, &to_fpga_events[flag]));
+                OCL_CHECK(err, err = q.enqueueWriteBuffer(
+                                   buffer_in1[flag], CL_FALSE, 0, cur_chunk_size,
+                                   source_in1.data() + buf_offset, nullptr, &to_fpga_events[flag]));
+                OCL_CHECK(err, err = q.enqueueWriteBuffer(
+                                   buffer_in2[flag], CL_FALSE, 0, cur_chunk_size,
+                                   source_in2.data() + buf_offset, nullptr,
+                                   &to_fpga_events_2[flag]));
                 // set_callback(to_fpga_events[flag], "ooo_queue");
 
-                std::vector<cl::Event> wait_kernel{to_fpga_events[flag]};
+                std::vector<cl::Event> wait_kernel{to_fpga_events[flag], to_fpga_events_2[flag]};
                 OCL_CHECK(err,
                           err = q.enqueueTask(krnl_vector_add, &wait_kernel, &kernel_events[flag]));
                 // set_callback(kernel_events[flag], "ooo_queue");
 
                 std::vector<cl::Event> wait_to_host{kernel_events[flag]};
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-                                   {buffer_out[flag]}, CL_MIGRATE_MEM_OBJECT_HOST, &wait_to_host,
+                OCL_CHECK(err, err = q.enqueueReadBuffer(
+                                   buffer_out[flag], CL_FALSE, 0, cur_chunk_size,
+                                   source_hw_results.data() + buf_offset, &wait_to_host,
                                    &to_host_events[flag]));
                 // set_callback(to_host_events[flag], "ooo_queue");
             }
@@ -392,14 +409,11 @@ int main(int argc, char** argv) {
                 auto buf_offset = i * chunk_size / sizeof(int);
                 // Allocate Buffer in Global Memory
                 OCL_CHECK(err, cl::Buffer buffer_in1(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                                   source_in1.data() + buf_offset, &err));
+                                   context, CL_MEM_READ_ONLY, cur_chunk_size, nullptr, &err));
                 OCL_CHECK(err, cl::Buffer buffer_in2(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, cur_chunk_size,
-                                   source_in2.data() + buf_offset, &err));
+                                   context, CL_MEM_READ_ONLY, cur_chunk_size, nullptr, &err));
                 OCL_CHECK(err, cl::Buffer buffer_output(
-                                   context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, cur_chunk_size,
-                                   source_hw_results.data() + buf_offset, &err));
+                                   context, CL_MEM_WRITE_ONLY, cur_chunk_size, nullptr, &err));
 
                 // Set the kernel arguments
                 int nargs = 0;
@@ -415,14 +429,18 @@ int main(int argc, char** argv) {
 
                 start_time = std::chrono::high_resolution_clock::now();
 
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_in1, buffer_in2},
-                                                                0 /* 0 means from host*/, nullptr,
-                                                                &event_data_to_fpga));
-                std::vector<cl::Event> wait_kernel{event_data_to_fpga};
+                OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_in1, CL_FALSE, 0, cur_chunk_size,
+                                                          source_in1.data() + buf_offset, nullptr,
+                                                          &event_data_to_fpga));
+                OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_in2, CL_FALSE, 0, cur_chunk_size,
+                                                          source_in2.data() + buf_offset, nullptr,
+                                                          &event_data_to_fpga_2));
+                std::vector<cl::Event> wait_kernel{event_data_to_fpga, event_data_to_fpga_2};
                 OCL_CHECK(err, err = q.enqueueTask(krnl_vector_add, &wait_kernel, &event_kernel));
                 std::vector<cl::Event> wait_to_host{event_kernel};
-                OCL_CHECK(err, err = q.enqueueMigrateMemObjects(
-                                   {buffer_output}, CL_MIGRATE_MEM_OBJECT_HOST, &wait_to_host,
+                OCL_CHECK(err, err = q.enqueueReadBuffer(
+                                   buffer_output, CL_FALSE, 0, cur_chunk_size,
+                                   source_hw_results.data() + buf_offset, &wait_to_host,
                                    &event_data_to_host));
                 OCL_CHECK(err, err = event_data_to_host.wait());
 
@@ -434,6 +452,12 @@ int main(int argc, char** argv) {
                 OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(
                                    CL_PROFILING_COMMAND_START, &nstimestart));
                 OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(
+                                   CL_PROFILING_COMMAND_END, &nstimeend));
+                nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+                OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(
+                                   CL_PROFILING_COMMAND_START, &nstimestart));
+                OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(
                                    CL_PROFILING_COMMAND_END, &nstimeend));
                 nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 

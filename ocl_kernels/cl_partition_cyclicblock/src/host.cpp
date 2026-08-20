@@ -146,17 +146,27 @@ int main(int argc, char** argv) {
     // compute the size of array in bytes
     size_t array_size_bytes = dims * dims * sizeof(int);
     OCL_CHECK(err,
-              cl::Buffer buffer_a(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, array_size_bytes, A.data(), &err));
+              // Device-only buffers: the transfers below are explicit, so the buffers must not
+              // be backed by host memory. The Funky backend force-adds CL_MEM_USE_HOST_PTR
+              // whenever a host pointer reaches it, which would turn each transfer into a
+              // host-side copy instead of a real device transfer.
+              cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, array_size_bytes,
+                                  nullptr, &err));
     OCL_CHECK(err,
-              cl::Buffer buffer_b(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, array_size_bytes, B.data(), &err));
+              cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, array_size_bytes,
+                                  nullptr, &err));
     OCL_CHECK(err,
-              cl::Buffer buffer_c(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, array_size_bytes, C.data(), &err));
+              cl::Buffer buffer_c(context, CL_MEM_WRITE_ONLY, array_size_bytes,
+                                  nullptr, &err));
     OCL_CHECK(err,
-              cl::Buffer buffer_d(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, array_size_bytes, D.data(), &err));
+              cl::Buffer buffer_d(context, CL_MEM_READ_ONLY, array_size_bytes,
+                                  nullptr, &err));
     OCL_CHECK(err,
-              cl::Buffer buffer_e(context, CL_MEM_USE_HOST_PTR | CL_MEM_READ_ONLY, array_size_bytes, E.data(), &err));
+              cl::Buffer buffer_e(context, CL_MEM_READ_ONLY, array_size_bytes,
+                                  nullptr, &err));
     OCL_CHECK(err,
-              cl::Buffer buffer_f(context, CL_MEM_USE_HOST_PTR | CL_MEM_WRITE_ONLY, array_size_bytes, F.data(), &err));
+              cl::Buffer buffer_f(context, CL_MEM_WRITE_ONLY, array_size_bytes,
+                                  nullptr, &err));
 
     OCL_CHECK(err, cl::Kernel matmul_kernel(program, "matmul_naive", &err));
     OCL_CHECK(err, err = matmul_kernel.setArg(0, buffer_a));
@@ -166,6 +176,7 @@ int main(int argc, char** argv) {
 
     cl::Event event_kernel;
     cl::Event event_data_to_fpga;
+    cl::Event event_data_to_fpga_2;
     cl::Event event_data_to_host;
     std::chrono::high_resolution_clock::time_point start_time, end_time;
     std::chrono::duration<double> duration;
@@ -182,13 +193,21 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations / 2; i++) {
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_a, buffer_b}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, array_size_bytes,
+                                                  A.data(), nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, array_size_bytes,
+                                                  B.data(), nullptr, &event_data_to_fpga_2));
         OCL_CHECK(err, err = q.enqueueTask(matmul_kernel, nullptr, &event_kernel));
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_c}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_c, CL_FALSE, 0, array_size_bytes,
+                                                 C.data(), nullptr, &event_data_to_host));
         q.finish();
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
         nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
@@ -215,15 +234,23 @@ int main(int argc, char** argv) {
     start_time = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < iterations / 2; i++) {
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_d, buffer_e}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_d, CL_FALSE, 0, array_size_bytes,
+                                                  D.data(), nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_e, CL_FALSE, 0, array_size_bytes,
+                                                  E.data(), nullptr, &event_data_to_fpga_2));
         OCL_CHECK(err, err = q.finish());
         OCL_CHECK(err, err = q.enqueueTask(matmul_partition_kernel, nullptr, &event_kernel));
         OCL_CHECK(err, err = q.finish());
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_f}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_f, CL_FALSE, 0, array_size_bytes,
+                                                 F.data(), nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
+        nstime_data_to_fpga_ocl += nstimeend - nstimestart;
+
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
+        OCL_CHECK(err, err = event_data_to_fpga_2.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
         nstime_data_to_fpga_ocl += nstimeend - nstimestart;
 
         OCL_CHECK(err, err = event_kernel.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));

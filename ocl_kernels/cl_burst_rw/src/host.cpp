@@ -87,8 +87,12 @@ int main(int argc, char** argv) {
     }
 
     // Allocate Buffer in Global Memory
-    OCL_CHECK(err, cl::Buffer buffer_rw(context, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, vector_size_bytes,
-                                        source_inout.data(), &err));
+    // Device-only buffers: the transfers below are explicit, so the buffers must not
+    // be backed by host memory. The Funky backend force-adds CL_MEM_USE_HOST_PTR
+    // whenever a host pointer reaches it, which would turn each transfer into a
+    // host-side copy instead of a real device transfer.
+    OCL_CHECK(err, cl::Buffer buffer_rw(context, CL_MEM_READ_WRITE, vector_size_bytes,
+                                        nullptr, &err));
 
     OCL_CHECK(err, err = krnl_add.setArg(0, buffer_rw));
     OCL_CHECK(err, err = krnl_add.setArg(1, size));
@@ -117,7 +121,8 @@ int main(int argc, char** argv) {
         std::copy(source_input.begin(), source_input.end(), source_inout.begin());
 
         auto t_xpu_0 = std::chrono::high_resolution_clock::now();
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_rw}, 0 /* 0 means from host*/, nullptr, &event_data_to_fpga));
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_rw, CL_FALSE, 0, vector_size_bytes,
+                                                  source_inout.data(), nullptr, &event_data_to_fpga));
         OCL_CHECK(err, err = q.finish());
         auto t_xpu_1 = std::chrono::high_resolution_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
@@ -129,7 +134,8 @@ int main(int argc, char** argv) {
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
         auto t_xpu_4 = std::chrono::high_resolution_clock::now();
-        OCL_CHECK(err, err = q.enqueueMigrateMemObjects({buffer_rw}, CL_MIGRATE_MEM_OBJECT_HOST, nullptr, &event_data_to_host));
+        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_rw, CL_FALSE, 0, vector_size_bytes,
+                                                 source_inout.data(), nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
         auto t_xpu_5 = std::chrono::high_resolution_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
