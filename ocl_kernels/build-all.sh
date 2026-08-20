@@ -16,7 +16,7 @@ build() {
 	(cd "$dir" && $build_cmd > /dev/null || echo "building $dir failed") &
 }
 
-apps="cl_dataflow_func cl_shift_register cl_systolic_array cl_burst_rw cl_gmem_2banks cl_wide_mem_rw"
+apps="cl_array_partition cl_burst_rw cl_gmem_2banks cl_shift_register cl_systolic_array cl_wide_mem_rw "
 
 for app in $apps; do
 	build "$app" "make host"
