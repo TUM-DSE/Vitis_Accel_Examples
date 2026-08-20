@@ -13,7 +13,7 @@ build() {
 	fi
 
 	echo "Building $dir ($build_cmd)"
-	(cd "$dir" && $build_cmd > /dev/null || echo "building $dir failed") &
+	(cd "$dir" && $build_cmd &> /dev/null || echo "building $dir failed") &
 }
 
 apps="cl_array_partition cl_burst_rw cl_gmem_2banks cl_shift_register cl_systolic_array cl_wide_mem_rw "
