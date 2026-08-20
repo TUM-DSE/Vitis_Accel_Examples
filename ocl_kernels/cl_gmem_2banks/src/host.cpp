@@ -16,7 +16,6 @@
 #include "bitmap.h"
 #include "xcl2.hpp"
 #include <vector>
-#include <iomanip>
 
 // Input image and golden reference are fixed, not passed on the command line.
 // Both are relative to the example directory the executable is run from, which
@@ -59,7 +58,6 @@ int main(int argc, char* argv[]) {
     // OPENCL HOST CODE AREA START
     auto devices = xcl::get_xil_devices();
 
-    auto reconf_start = std::chrono::high_resolution_clock::now();
     // read_binary_file() is a utility API which will load the binaryFile
     // and will return the pointer to file buffer.
     auto fileBuf = xcl::read_binary_file(binaryFile);
@@ -86,8 +84,6 @@ int main(int argc, char* argv[]) {
         std::cerr << "Failed to program any device found, exit!\n";
         exit(EXIT_FAILURE);
     }
-    auto reconf_end = std::chrono::high_resolution_clock::now();
-    auto reconf_time = std::chrono::duration<double>(reconf_end - reconf_start);
 
     OCL_CHECK(err, cl::Buffer buffer_inImage(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, image_size_bytes,
                                              inputImage.data(), &err));
@@ -122,11 +118,6 @@ int main(int argc, char* argv[]) {
     // is opened right before an OpenCL enqueue call and closed right after it (and any q.finish())
     // completes, so host-side work (loop bookkeeping) is never included.
     uint64_t time_xpu = 0;
-
-    // Per-phase host-clock times, kept for the throughput numbers printed below
-    std::chrono::duration<double> to_fpga_time(0);
-    std::chrono::duration<double> kernel_time(0);
-    std::chrono::duration<double> from_fpga_time(0);
 
     // This is required for proper time measurements in Proteus. We add it here
     // as well to have the same host code for Proteus and native.
@@ -165,10 +156,6 @@ int main(int argc, char* argv[]) {
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
         OCL_CHECK(err, err = event_data_to_host.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_END, &nstimeend));
         time_data_to_host_ocl += nstimeend - nstimestart;
-
-        to_fpga_time += std::chrono::duration<double>(t_xpu_1 - t_xpu_0);
-        kernel_time += std::chrono::duration<double>(t_xpu_3 - t_xpu_2);
-        from_fpga_time += std::chrono::duration<double>(t_xpu_5 - t_xpu_4);
     }
     // OPENCL HOST CODE AREA END
 
@@ -184,17 +171,6 @@ int main(int argc, char* argv[]) {
               << time_kernel_ocl / ns_per_s << ","
               << time_data_to_host_ocl / ns_per_s
               << "\n";
-
-    // Throughputs
-    const int n_total = n_warmup + n_reps;
-    std::cout << "app_name,PCIe_Wr[GB/s],Kernel[GB/s],PCIe_Rd[GB/s],FPGA_exec_time[s],FPGA_reconf_time[s]\n";
-    std::cout << "cl_gmem_2banks,"
-              << std::setprecision(3) << std::fixed << (image_size_bytes * n_total / to_fpga_time.count())   / 1000000000 << ","
-              << std::setprecision(3) << std::fixed << (image_size_bytes * n_total * 2 / kernel_time.count()) / 1000000000 << ","
-              << std::setprecision(3) << std::fixed << (image_size_bytes * n_total / from_fpga_time.count()) / 1000000000 << ","
-              << time_xpu / ns_per_s << ","
-              << reconf_time.count() << ","
-              << std::endl;
 
     // Compare Golden Image with Output image
     bool match = 1;
