@@ -223,29 +223,29 @@ int main(int argc, char** argv) {
     // The energy counter covers the whole loop window, idle time included, so the
     // matching denominator for average power is wall-clock time across the loop
     // rather than time_xpu (which excludes host-side bookkeeping).
-    auto t_loop_0 = std::chrono::high_resolution_clock::now();
+    auto t_loop_0 = std::chrono::steady_clock::now();
 
     // Running the tiled matmul kernel
     for (int iter = 0; iter < n_warmup + n_reps; iter++) {
         cl::Event ev_a, ev_b, ev_k, ev_r;
 
-        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_0 = std::chrono::steady_clock::now();
         q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, in_size_bytes, A.data(), nullptr, &ev_a);
         q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, in_size_bytes, B.data(), nullptr, &ev_b);
         q.finish();
-        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_1 = std::chrono::steady_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
 
-        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_2 = std::chrono::steady_clock::now();
         q.enqueueNDRangeKernel(matmul_partition_kernel, cl::NullRange, global, local, nullptr, &ev_k);
         q.finish();
-        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_3 = std::chrono::steady_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
-        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_4 = std::chrono::steady_clock::now();
         q.enqueueReadBuffer(buffer_c, CL_FALSE, 0, out_size_bytes, C.data(), nullptr, &ev_r);
         q.finish();
-        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_5 = std::chrono::steady_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
 
         cl_ulong s, e;
@@ -265,7 +265,7 @@ int main(int argc, char** argv) {
         time_data_to_host_ocl += e - s;
     }
 
-    auto t_loop_1 = std::chrono::high_resolution_clock::now();
+    auto t_loop_1 = std::chrono::steady_clock::now();
     uint64_t time_loop =
         std::chrono::duration_cast<std::chrono::nanoseconds>(t_loop_1 - t_loop_0).count();
 

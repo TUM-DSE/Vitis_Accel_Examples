@@ -328,30 +328,30 @@ int main(int argc, char** argv) {
     // matching denominator for average power is wall-clock time across the loop
     // rather than time_xpu (which excludes host-side bookkeeping).
     if (have_energy) power.start();
-    auto t_loop_0 = std::chrono::high_resolution_clock::now();
+    auto t_loop_0 = std::chrono::steady_clock::now();
 
     // Running the array-partitioned matmul kernel
     for (int i = 0; i < n_warmup + n_reps; i++) {
-        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_0 = std::chrono::steady_clock::now();
         OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, in_size_bytes,
                                                   A.data(), nullptr, &event_data_to_fpga));
         OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, in_size_bytes,
                                                   B.data(), nullptr, &event_data_to_fpga_2));
         OCL_CHECK(err, err = q.finish());
-        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_1 = std::chrono::steady_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
 
-        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_2 = std::chrono::steady_clock::now();
         OCL_CHECK(err, err = q.enqueueTask(matmul_partition_kernel, nullptr, &event_kernel));
         OCL_CHECK(err, err = q.finish());
-        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_3 = std::chrono::steady_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
-        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_4 = std::chrono::steady_clock::now();
         OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_c, CL_FALSE, 0, out_size_bytes,
                                                  C.data(), nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
-        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
+        auto t_xpu_5 = std::chrono::steady_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
 
         OCL_CHECK(err, err = event_data_to_fpga.getProfilingInfo<uint64_t>(CL_PROFILING_COMMAND_START, &nstimestart));
@@ -371,7 +371,7 @@ int main(int argc, char** argv) {
         time_data_to_host_ocl += nstimeend - nstimestart;
     }
 
-    auto t_loop_1 = std::chrono::high_resolution_clock::now();
+    auto t_loop_1 = std::chrono::steady_clock::now();
     if (have_energy) have_energy = power.finish();
     uint64_t time_loop =
         std::chrono::duration_cast<std::chrono::nanoseconds>(t_loop_1 - t_loop_0).count();
