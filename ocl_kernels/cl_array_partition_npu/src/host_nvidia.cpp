@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <thread>
 #include <vector>
 
 // Must match TILE_SIZE in matmul_nvidia.cl
@@ -212,13 +213,45 @@ int main(int argc, char** argv) {
     unsigned long long energy_start_mj = 0;
     unsigned long long energy_end_mj = 0;
     bool have_nvml = nvml_open(device, &nvml_dev);
-    bool have_energy = have_nvml && nvml_energy_mj(nvml_dev, &energy_start_mj);
+    unsigned long long probe_mj = 0;
+    bool have_energy = have_nvml && nvml_energy_mj(nvml_dev, &probe_mj);
     if (have_nvml && !have_energy) {
         std::cerr << "NVML: total energy counter unsupported on this GPU"
                      " (needs Volta or newer), energy not measured\n";
     }
 
     q.finish();
+
+    // Idle baseline, taken in the same process state as the run that follows:
+    // context and program built, buffers allocated, nothing enqueued. Differencing
+    // the energy counter gives an exact mean over the window rather than a noisy
+    // instantaneous sample.
+    //
+    // This assumes the GPU clocks are pinned (nvidia-smi -pm 1 / -lgc). Without
+    // that the P-state here need not be the one that applies during the loop, and
+    // the baseline would not be the right thing to subtract.
+    const double idle_window_s = 10.0;
+    double idle_w = 0.0;
+    bool have_idle = false;
+    if (have_energy) {
+        unsigned long long e0 = 0, e1 = 0;
+        if (nvml_energy_mj(nvml_dev, &e0)) {
+            auto t0 = std::chrono::steady_clock::now();
+            std::this_thread::sleep_for(std::chrono::duration<double>(idle_window_s));
+            auto t1 = std::chrono::steady_clock::now();
+            double span = std::chrono::duration<double>(t1 - t0).count();
+            if (nvml_energy_mj(nvml_dev, &e1) && span > 0.0) {
+                idle_w = (e1 - e0) / 1000.0 / span;
+                have_idle = true;
+            }
+        }
+        if (!have_idle) {
+            std::cerr << "NVML: idle baseline measurement failed,"
+                         " reporting gross energy only\n";
+        }
+    }
+
+    if (have_energy && !nvml_energy_mj(nvml_dev, &energy_start_mj)) have_energy = false;
 
     // The energy counter covers the whole loop window, idle time included, so the
     // matching denominator for average power is wall-clock time across the loop
@@ -281,7 +314,8 @@ int main(int argc, char** argv) {
     double ns_per_s = 1000000000;
     double time_loop_s = time_loop / ns_per_s;
     std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,"
-                 "time_data_to_host,time_loop,energy_j,avg_power_w\n"
+                 "time_data_to_host,time_loop,energy_j,avg_power_w,idle_w,idle_window_s,"
+                 "net_energy_j\n"
               << "cl_array_partition_npu,"
               << in_size_bytes * 2 << ","
               << out_size_bytes << ","
@@ -294,11 +328,22 @@ int main(int argc, char** argv) {
               << time_loop_s << ",";
     // Left empty rather than zero when unavailable, so a missing measurement cannot
     // be mistaken for a GPU that drew no power.
+    double energy_j = have_energy ? (energy_end_mj - energy_start_mj) / 1000.0 : 0.0;
     if (have_energy) {
-        double energy_j = (energy_end_mj - energy_start_mj) / 1000.0;
         std::cout << energy_j << "," << (time_loop_s > 0.0 ? energy_j / time_loop_s : 0.0);
     } else {
         std::cout << ",";
+    }
+    std::cout << ",";
+    if (have_idle) {
+        std::cout << idle_w << "," << idle_window_s;
+    } else {
+        std::cout << ",";
+    }
+    std::cout << ",";
+    // Energy above the idle baseline: what running the workload actually cost.
+    if (have_energy && have_idle) {
+        std::cout << energy_j - idle_w * time_loop_s;
     }
     std::cout << "\n";
 

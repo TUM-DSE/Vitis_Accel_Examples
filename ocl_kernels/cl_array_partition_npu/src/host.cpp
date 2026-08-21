@@ -126,6 +126,32 @@ struct PowerSampler {
         return true;
     }
 
+    // Baseline with the bitstream loaded and the queue empty. Runs synchronously
+    // before the timed loop and leaves energy_j untouched. The 1 Hz XMC refresh is
+    // why this window has to be seconds long rather than milliseconds.
+    bool measure_idle(double seconds, double* watts) {
+        if (!active) return false;
+        double p_prev = 0.0;
+        if (!read_board_power(xmc, &p_prev)) return false;
+        auto t0 = std::chrono::steady_clock::now();
+        auto t_prev = t0;
+        double e = 0.0;
+        for (;;) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            double p = 0.0;
+            if (!read_board_power(xmc, &p)) return false;
+            auto t = std::chrono::steady_clock::now();
+            e += 0.5 * (p_prev + p) * std::chrono::duration<double>(t - t_prev).count();
+            p_prev = p;
+            t_prev = t;
+            if (std::chrono::duration<double>(t - t0).count() >= seconds) break;
+        }
+        double span = std::chrono::duration<double>(t_prev - t0).count();
+        if (span <= 0.0) return false;
+        *watts = e / span;
+        return true;
+    }
+
     void start() {
         if (!active) return;
         if (!read_board_power(xmc, &last_w)) {
@@ -324,6 +350,15 @@ int main(int argc, char** argv) {
     // as well to have the same host code for Proteus and native.
     q.finish();
 
+    // Idle baseline, taken in the same process state as the run that follows:
+    // bitstream programmed, buffers allocated, nothing enqueued.
+    const double idle_window_s = 10.0;
+    double idle_w = 0.0;
+    bool have_idle = have_energy && power.measure_idle(idle_window_s, &idle_w);
+    if (have_energy && !have_idle) {
+        std::cerr << "power: idle baseline measurement failed, reporting gross energy only\n";
+    }
+
     // The sampled window covers the whole loop, idle time included, so the
     // matching denominator for average power is wall-clock time across the loop
     // rather than time_xpu (which excludes host-side bookkeeping).
@@ -381,7 +416,8 @@ int main(int argc, char** argv) {
     double ns_per_s = 1000000000;
     double time_loop_s = time_loop / ns_per_s;
     std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,"
-                 "time_data_to_host,time_loop,energy_j,avg_power_w\n"
+                 "time_data_to_host,time_loop,energy_j,avg_power_w,idle_w,idle_window_s,"
+                 "net_energy_j\n"
               << "cl_array_partition_npu,"
               << in_size_bytes * 2 << ","
               << out_size_bytes << ","
@@ -399,6 +435,17 @@ int main(int argc, char** argv) {
                   << (time_loop_s > 0.0 ? power.energy_j / time_loop_s : 0.0);
     } else {
         std::cout << ",";
+    }
+    std::cout << ",";
+    if (have_idle) {
+        std::cout << idle_w << "," << idle_window_s;
+    } else {
+        std::cout << ",";
+    }
+    std::cout << ",";
+    // Energy above the idle baseline: what running the workload actually cost.
+    if (have_energy && have_idle) {
+        std::cout << power.energy_j - idle_w * time_loop_s;
     }
     std::cout << "\n";
 
