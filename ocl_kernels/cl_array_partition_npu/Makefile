@@ -56,10 +56,27 @@ endif
 ############################## NVIDIA GPU Target ##############################
 NVIDIA_CXX      := g++
 NVIDIA_CXXFLAGS := -std=c++14 -O2
+
+# nvml.h and libnvidia-ml ship in /usr/include and /usr/lib with the driver
+# packages on some systems, but on others only the CUDA toolkit has them -- e.g.
+# containers where the runtime injects the driver libraries from a path the
+# compiler and linker do not search. Fall back to the toolkit when it is there;
+# override CUDA_PATH, NVIDIA_INC or NVIDIA_LIB for a non-standard install.
+CUDA_PATH       ?= /usr/local/cuda
+
+ifneq ($(wildcard $(CUDA_PATH)/include/nvml.h),)
+NVIDIA_INC      ?= -I$(CUDA_PATH)/include
+else
 NVIDIA_INC      ?=
-# nvml.h ships in /usr/include with the driver packages and in the CUDA toolkit's
-# include dir; set NVIDIA_INC=-I<cuda>/include if it is not on the default path.
+endif
+
+# Linking against the stub is enough: it carries the real SONAME, so at run time
+# ld.so still loads the driver's own libnvidia-ml.so.1.
+ifneq ($(wildcard $(CUDA_PATH)/lib64/stubs/libnvidia-ml.so),)
+NVIDIA_LIB      ?= -lOpenCL -L$(CUDA_PATH)/lib64/stubs -lnvidia-ml
+else
 NVIDIA_LIB      ?= -lOpenCL -lnvidia-ml
+endif
 
 .PHONY: nvidia run_nvidia clean_nvidia
 
