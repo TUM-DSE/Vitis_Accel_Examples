@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
     cl::Event event_data_to_fpga_2;
     cl::Event event_data_to_host;
     const int n_warmup = 0;
-    const int n_reps = 16000;
+    const int n_reps = 100000;
     uint64_t nstimestart = 0;
     uint64_t nstimeend = 0;
     uint64_t time_kernel_ocl = 0;
