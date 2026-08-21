@@ -51,11 +51,11 @@ void print(int* data, int columns, int rows) {
     printf("⋱\n\n");
 }
 
-void verify(vector<int>& gold, vector<int>& output) {
+void verify(vector<int>& gold, vector<int>& output, int columns) {
     for (int i = 0; i < (int)output.size(); i++) {
         if (output[i] != gold[i]) {
             printf("Mismatch %d: gold: %d device: %d\n", i, gold[i], output[i]);
-            print(output.data(), 16, 16);
+            print(output.data(), columns, columns);
             exit(EXIT_FAILURE);
         }
     }
@@ -77,8 +77,8 @@ int main(int argc, char** argv) {
     }
     std::string src((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 
-    static const int columns = 64;
-    static const int rows = 64;
+    static const int columns = 128;
+    static const int rows = 128;
 
     vector<int> A(columns * rows);
     vector<int> B(columns * rows);
@@ -200,7 +200,7 @@ int main(int argc, char** argv) {
         time_data_to_host_ocl += e - s;
     }
 
-    verify(gold, C);
+    verify(gold, C, columns);
 
     double ns_per_s = 1000000000;
     std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
