@@ -16,6 +16,7 @@
 #include "xcl2.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <random>
 #include <vector>
@@ -25,28 +26,31 @@ using std::generate;
 using std::uniform_int_distribution;
 using std::vector;
 
-// row major
-void matmul(int* C, int* A, int* B, int M) {
+// row major, int8 operands accumulated into int32 (RKNN matmul type 2)
+void matmul(int* C, const int8_t* A, const int8_t* B, int M) {
     for (int k = 0; k < M; k++) {
         for (int j = 0; j < M; j++) {
             for (int i = 0; i < M; i++) {
-                C[k * M + j] += A[k * M + i] * B[i * M + j];
+                C[k * M + j] += (int)A[k * M + i] * (int)B[i * M + j];
             }
         }
     }
 }
 
-int gen_random() {
+// Full signed int8 range, as the RKNN matmul demo also uses, so sign handling is
+// exercised on every device instead of only the positive path.
+int8_t gen_random() {
     static default_random_engine e;
-    static uniform_int_distribution<int> dist(0, 10);
+    static uniform_int_distribution<int> dist(-128, 127);
 
-    return dist(e);
+    return (int8_t)dist(e);
 }
 
-void print(int* data, int columns, int rows) {
+template <typename T>
+void print(const T* data, int columns, int rows) {
     for (int r = 0; r < 10; r++) {
         for (int c = 0; c < 10; c++) {
-            printf("%4d ", data[r * columns + c]);
+            printf("%4d ", (int)data[r * columns + c]);
         }
         printf("…\n");
     }
@@ -83,8 +87,8 @@ int main(int argc, char** argv) {
     cl::CommandQueue q;
     cl::Context context;
 
-    vector<int, aligned_allocator<int> > A(columns * rows);
-    vector<int, aligned_allocator<int> > B(columns * rows);
+    vector<int8_t, aligned_allocator<int8_t> > A(columns * rows);
+    vector<int8_t, aligned_allocator<int8_t> > B(columns * rows);
     vector<int, aligned_allocator<int> > C(columns * rows, 0);
     vector<int, aligned_allocator<int> > gold(columns * rows, 0);
 
@@ -128,19 +132,21 @@ int main(int argc, char** argv) {
     }
 
     // compute the size of array in bytes
-    size_t array_size_bytes = columns * rows * sizeof(int);
+    // int8 in, int32 out: the two directions no longer have the same size
+    size_t in_size_bytes = columns * rows * sizeof(int8_t);
+    size_t out_size_bytes = columns * rows * sizeof(int);
     OCL_CHECK(err,
               // Device-only buffers: the transfers below are explicit, so the buffers must not
               // be backed by host memory. The Funky backend force-adds CL_MEM_USE_HOST_PTR
               // whenever a host pointer reaches it, which would turn each transfer into a
               // host-side copy instead of a real device transfer.
-              cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, array_size_bytes,
+              cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, in_size_bytes,
                                   nullptr, &err));
     OCL_CHECK(err,
-              cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, array_size_bytes,
+              cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, in_size_bytes,
                                   nullptr, &err));
     OCL_CHECK(err,
-              cl::Buffer buffer_c(context, CL_MEM_WRITE_ONLY, array_size_bytes,
+              cl::Buffer buffer_c(context, CL_MEM_WRITE_ONLY, out_size_bytes,
                                   nullptr, &err));
 
     OCL_CHECK(err, cl::Kernel matmul_partition_kernel(program, "matmul_partition", &err));
@@ -172,9 +178,9 @@ int main(int argc, char** argv) {
     // Running the array-partitioned matmul kernel
     for (int i = 0; i < n_warmup + n_reps; i++) {
         auto t_xpu_0 = std::chrono::high_resolution_clock::now();
-        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, array_size_bytes,
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, in_size_bytes,
                                                   A.data(), nullptr, &event_data_to_fpga));
-        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, array_size_bytes,
+        OCL_CHECK(err, err = q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, in_size_bytes,
                                                   B.data(), nullptr, &event_data_to_fpga_2));
         OCL_CHECK(err, err = q.finish());
         auto t_xpu_1 = std::chrono::high_resolution_clock::now();
@@ -187,7 +193,7 @@ int main(int argc, char** argv) {
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
         auto t_xpu_4 = std::chrono::high_resolution_clock::now();
-        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_c, CL_FALSE, 0, array_size_bytes,
+        OCL_CHECK(err, err = q.enqueueReadBuffer(buffer_c, CL_FALSE, 0, out_size_bytes,
                                                  C.data(), nullptr, &event_data_to_host));
         OCL_CHECK(err, err = q.finish());
         auto t_xpu_5 = std::chrono::high_resolution_clock::now();
@@ -215,8 +221,8 @@ int main(int argc, char** argv) {
     double ns_per_s = 1000000000;
     std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
               << "cl_array_partition_npu,"
-              << array_size_bytes * 2 << ","
-              << array_size_bytes << ","
+              << in_size_bytes * 2 << ","
+              << out_size_bytes << ","
               << n_warmup << ","
               << n_reps << ","
               << time_xpu / ns_per_s << ","

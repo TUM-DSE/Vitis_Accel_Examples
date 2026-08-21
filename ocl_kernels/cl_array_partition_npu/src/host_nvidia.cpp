@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -64,28 +65,31 @@ static bool nvml_energy_mj(nvmlDevice_t dev, unsigned long long* mj) {
     return nvmlDeviceGetTotalEnergyConsumption(dev, mj) == NVML_SUCCESS;
 }
 
-// row major
-void matmul(int* C, int* A, int* B, int M) {
+// row major, int8 operands accumulated into int32 (RKNN matmul type 2)
+void matmul(int* C, const int8_t* A, const int8_t* B, int M) {
     for (int k = 0; k < M; k++) {
         for (int j = 0; j < M; j++) {
             for (int i = 0; i < M; i++) {
-                C[k * M + j] += A[k * M + i] * B[i * M + j];
+                C[k * M + j] += (int)A[k * M + i] * (int)B[i * M + j];
             }
         }
     }
 }
 
-int gen_random() {
+// Full signed int8 range, as the RKNN matmul demo also uses, so sign handling is
+// exercised on every device instead of only the positive path.
+int8_t gen_random() {
     static default_random_engine e;
-    static uniform_int_distribution<int> dist(0, 10);
+    static uniform_int_distribution<int> dist(-128, 127);
 
-    return dist(e);
+    return (int8_t)dist(e);
 }
 
-void print(int* data, int columns, int rows) {
+template <typename T>
+void print(const T* data, int columns, int rows) {
     for (int r = 0; r < 10; r++) {
         for (int c = 0; c < 10; c++) {
-            printf("%4d ", data[r * columns + c]);
+            printf("%4d ", (int)data[r * columns + c]);
         }
         printf("…\n");
     }
@@ -124,8 +128,8 @@ int main(int argc, char** argv) {
     static const int columns = 128;
     static const int rows = 128;
 
-    vector<int> A(columns * rows);
-    vector<int> B(columns * rows);
+    vector<int8_t> A(columns * rows);
+    vector<int8_t> B(columns * rows);
     vector<int> C(columns * rows, 0);
     vector<int> gold(columns * rows, 0);
 
@@ -178,10 +182,12 @@ int main(int argc, char** argv) {
     }
 
     // compute the size of array in bytes
-    size_t array_size_bytes = columns * rows * sizeof(int);
-    cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, array_size_bytes);
-    cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, array_size_bytes);
-    cl::Buffer buffer_c(context, CL_MEM_WRITE_ONLY, array_size_bytes);
+    // int8 in, int32 out: the two directions no longer have the same size
+    size_t in_size_bytes = columns * rows * sizeof(int8_t);
+    size_t out_size_bytes = columns * rows * sizeof(int);
+    cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, in_size_bytes);
+    cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, in_size_bytes);
+    cl::Buffer buffer_c(context, CL_MEM_WRITE_ONLY, out_size_bytes);
 
     cl::Kernel matmul_partition_kernel(program, "matmul_partition");
     matmul_partition_kernel.setArg(0, buffer_a);
@@ -224,8 +230,8 @@ int main(int argc, char** argv) {
         cl::Event ev_a, ev_b, ev_k, ev_r;
 
         auto t_xpu_0 = std::chrono::high_resolution_clock::now();
-        q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, array_size_bytes, A.data(), nullptr, &ev_a);
-        q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, array_size_bytes, B.data(), nullptr, &ev_b);
+        q.enqueueWriteBuffer(buffer_a, CL_FALSE, 0, in_size_bytes, A.data(), nullptr, &ev_a);
+        q.enqueueWriteBuffer(buffer_b, CL_FALSE, 0, in_size_bytes, B.data(), nullptr, &ev_b);
         q.finish();
         auto t_xpu_1 = std::chrono::high_resolution_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
@@ -237,7 +243,7 @@ int main(int argc, char** argv) {
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
 
         auto t_xpu_4 = std::chrono::high_resolution_clock::now();
-        q.enqueueReadBuffer(buffer_c, CL_FALSE, 0, array_size_bytes, C.data(), nullptr, &ev_r);
+        q.enqueueReadBuffer(buffer_c, CL_FALSE, 0, out_size_bytes, C.data(), nullptr, &ev_r);
         q.finish();
         auto t_xpu_5 = std::chrono::high_resolution_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
@@ -277,8 +283,8 @@ int main(int argc, char** argv) {
     std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,"
                  "time_data_to_host,time_loop,energy_j,avg_power_w\n"
               << "cl_array_partition_npu,"
-              << array_size_bytes * 2 << ","
-              << array_size_bytes << ","
+              << in_size_bytes * 2 << ","
+              << out_size_bytes << ","
               << n_warmup << ","
               << n_reps << ","
               << time_xpu / ns_per_s << ","

@@ -1,5 +1,6 @@
 // Matrix multiplication C = A x B, with A, B and C square matrices of
-// dimension (size x size), row major.
+// dimension (size x size), row major. A and B are int8, C is an int32
+// accumulator, matching the RKNPU's INT8_MM_INT8_TO_INT32 matmul mode.
 //
 // Must match TILE_SIZE in host_nvidia.cpp.
 #define TILE_SIZE 16
@@ -14,12 +15,12 @@
 // tiles for its TILE_SIZE multiply-accumulates instead of going to global
 // memory for each of them.
 __kernel __attribute__((reqd_work_group_size(TILE_SIZE, TILE_SIZE, 1))) void matmul_partition(
-    const __global int* in1, // Read-Only Matrix 1
-    const __global int* in2, // Read-Only Matrix 2
-    __global int* out,       // Output Result
+    const __global char* in1, // Read-Only Matrix 1 (int8)
+    const __global char* in2, // Read-Only Matrix 2 (int8)
+    __global int* out,        // Output Result (int32 accumulator)
     int size) {
-    __local int tileA[TILE_SIZE][TILE_SIZE];
-    __local int tileB[TILE_SIZE][TILE_SIZE];
+    __local char tileA[TILE_SIZE][TILE_SIZE];
+    __local char tileB[TILE_SIZE][TILE_SIZE];
 
     int row = get_global_id(0);
     int col = get_global_id(1);
@@ -38,7 +39,7 @@ __kernel __attribute__((reqd_work_group_size(TILE_SIZE, TILE_SIZE, 1))) void mat
 
         barrier(CLK_LOCAL_MEM_FENCE);
 
-        for (int k = 0; k < TILE_SIZE; k++) sum += tileA[lr][k] * tileB[k][lc];
+        for (int k = 0; k < TILE_SIZE; k++) sum += (int)tileA[lr][k] * (int)tileB[k][lc];
 
         barrier(CLK_LOCAL_MEM_FENCE);
     }

@@ -15,7 +15,7 @@
 */
 
 // Maximum Array Size
-#define MAX_SIZE 128 // Total data size = columns * rows * sizeof(int) * 2 = 128 KB
+#define MAX_SIZE 128 // int8 inputs: 2 * 128 * 128 * 1 B = 32 KB, int32 output: 64 KB
 
 // Tripcount identifiers
 __constant int c_size = MAX_SIZE;
@@ -23,15 +23,17 @@ __constant int c_size = MAX_SIZE;
 // Matrix multiplication kernel
 // This kernel presents array partition concept
 kernel __attribute__((reqd_work_group_size(1, 1, 1))) void matmul_partition(
-    const __global int* in1, // Read-Only Matrix 1
-    const __global int* in2, // Read-Only Matrix 2
-    __global int* out,       // Output Result
-    int size) {              // Local memory to store input and output matrices
-    // Local memory is implemented as BRAM memory blocks
-    int A[MAX_SIZE][MAX_SIZE];
+    const __global char* in1, // Read-Only Matrix 1 (int8)
+    const __global char* in2, // Read-Only Matrix 2 (int8)
+    __global int* out,        // Output Result (int32 accumulator)
+    int size) {               // Local memory to store input and output matrices
+    // Local memory is implemented as BRAM memory blocks. A and B hold int8
+    // operands; the accumulator and the result stay int32, which is what the
+    // RKNPU's INT8_MM_INT8_TO_INT32 mode also produces.
+    char A[MAX_SIZE][MAX_SIZE];
 
     // Partition Matrix B on 2nd dimension completely
-    int B[MAX_SIZE][MAX_SIZE] __attribute__((xcl_array_partition(complete, 2)));
+    char B[MAX_SIZE][MAX_SIZE] __attribute__((xcl_array_partition(complete, 2)));
 
     // Partition Matrix C on 2nd dimension completely
     int C[MAX_SIZE][MAX_SIZE] __attribute__((xcl_array_partition(complete, 2)));
@@ -69,7 +71,7 @@ kernel __attribute__((reqd_work_group_size(1, 1, 1))) void matmul_partition(
             : for (int k = 0; k < size; k++) {
             __attribute__((xcl_loop_tripcount(c_size, c_size))) arraypart3 : for (int j = 0; j < MAX_SIZE; j++) {
                 int result = (k == 0) ? 0 : temp_sum[j];
-                result += A[i][k] * B[k][j];
+                result += (int)A[i][k] * (int)B[k][j];
                 temp_sum[j] = result;
                 if (k == size - 1) C[i][j] = result;
             }
