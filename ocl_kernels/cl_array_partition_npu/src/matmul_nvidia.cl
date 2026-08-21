@@ -4,25 +4,6 @@
 // Must match TILE_SIZE in host_nvidia.cpp.
 #define TILE_SIZE 16
 
-// Naive implementation: one work-item per output element, every tap read
-// straight from global memory. This is the GPU analog of the matmul kernel
-// in matmul.cl, which streams the matrices into local buffers and then loops
-// over them serially in a single work-item.
-__kernel void matmul(const __global int* in1, // Read-Only Matrix 1
-                     const __global int* in2, // Read-Only Matrix 2
-                     __global int* out,       // Output Result
-                     int size) {
-    int row = get_global_id(0);
-    int col = get_global_id(1);
-
-    if (row >= size || col >= size) return;
-
-    int sum = 0;
-    for (int k = 0; k < size; k++) sum += in1[row * size + k] * in2[k * size + col];
-
-    out[row * size + col] = sum;
-}
-
 // Local-memory tiled implementation.
 //
 // On the FPGA, matmul_partition partitions B, C and temp_sum completely on
