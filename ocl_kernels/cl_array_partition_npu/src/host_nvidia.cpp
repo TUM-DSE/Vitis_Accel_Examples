@@ -1,6 +1,7 @@
 #define CL_HPP_TARGET_OPENCL_VERSION 200
 #define CL_HPP_MINIMUM_OPENCL_VERSION 110
 #include <CL/cl2.hpp>
+#include <nvml.h>
 
 #include <algorithm>
 #include <chrono>
@@ -19,6 +20,49 @@ using std::uniform_int_distribution;
 using std::vector;
 
 static int roundUp(int n, int m) { return ((n + m - 1) / m) * m; }
+
+// From cl_nv_device_attribute_query, so NVML can be pointed at the very board
+// OpenCL selected instead of assuming there is only one GPU in the machine.
+#define CL_DEVICE_PCI_BUS_ID_NV 0x4008
+#define CL_DEVICE_PCI_SLOT_ID_NV 0x4009
+
+// Binds NVML to the OpenCL device, matching on PCI address and falling back to
+// NVML index 0 if the driver does not expose the extension. Energy measurement
+// is best-effort: every failure path warns and leaves the benchmark itself
+// running, it just reports no energy.
+static bool nvml_open(const cl::Device& device, nvmlDevice_t* out) {
+    nvmlReturn_t r = nvmlInit();
+    if (r != NVML_SUCCESS) {
+        std::cerr << "NVML: init failed (" << nvmlErrorString(r) << "), energy not measured\n";
+        return false;
+    }
+
+    cl_uint bus = 0, slot = 0;
+    if (device.getInfo(CL_DEVICE_PCI_BUS_ID_NV, &bus) == CL_SUCCESS &&
+        device.getInfo(CL_DEVICE_PCI_SLOT_ID_NV, &slot) == CL_SUCCESS) {
+        char pci[32];
+        snprintf(pci, sizeof(pci), "0000:%02x:%02x.0", bus, slot);
+        r = nvmlDeviceGetHandleByPciBusId(pci, out);
+        if (r == NVML_SUCCESS) return true;
+        std::cerr << "NVML: no device at " << pci << " (" << nvmlErrorString(r)
+                  << "), falling back to NVML index 0\n";
+    }
+
+    r = nvmlDeviceGetHandleByIndex(0, out);
+    if (r != NVML_SUCCESS) {
+        std::cerr << "NVML: no device (" << nvmlErrorString(r) << "), energy not measured\n";
+        nvmlShutdown();
+        return false;
+    }
+    return true;
+}
+
+// Board-wide energy counter in millijoules since the driver was last reloaded.
+// Monotonic, so the loop's energy is the difference of two reads. Needs Volta or
+// newer; older GPUs answer NVML_ERROR_NOT_SUPPORTED.
+static bool nvml_energy_mj(nvmlDevice_t dev, unsigned long long* mj) {
+    return nvmlDeviceGetTotalEnergyConsumption(dev, mj) == NVML_SUCCESS;
+}
 
 // row major
 void matmul(int* C, int* A, int* B, int M) {
@@ -158,7 +202,22 @@ int main(int argc, char** argv) {
     // completes, so host-side work (loop bookkeeping) is never included.
     uint64_t time_xpu = 0;
 
+    nvmlDevice_t nvml_dev{};
+    unsigned long long energy_start_mj = 0;
+    unsigned long long energy_end_mj = 0;
+    bool have_nvml = nvml_open(device, &nvml_dev);
+    bool have_energy = have_nvml && nvml_energy_mj(nvml_dev, &energy_start_mj);
+    if (have_nvml && !have_energy) {
+        std::cerr << "NVML: total energy counter unsupported on this GPU"
+                     " (needs Volta or newer), energy not measured\n";
+    }
+
     q.finish();
+
+    // The energy counter covers the whole loop window, idle time included, so the
+    // matching denominator for average power is wall-clock time across the loop
+    // rather than time_xpu (which excludes host-side bookkeeping).
+    auto t_loop_0 = std::chrono::high_resolution_clock::now();
 
     // Running the tiled matmul kernel
     for (int iter = 0; iter < n_warmup + n_reps; iter++) {
@@ -200,10 +259,23 @@ int main(int argc, char** argv) {
         time_data_to_host_ocl += e - s;
     }
 
+    auto t_loop_1 = std::chrono::high_resolution_clock::now();
+    uint64_t time_loop =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t_loop_1 - t_loop_0).count();
+
+    if (have_energy && !nvml_energy_mj(nvml_dev, &energy_end_mj)) {
+        std::cerr << "NVML: reading the energy counter after the loop failed,"
+                     " energy not measured\n";
+        have_energy = false;
+    }
+    if (have_nvml) nvmlShutdown();
+
     verify(gold, C, columns);
 
     double ns_per_s = 1000000000;
-    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+    double time_loop_s = time_loop / ns_per_s;
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,"
+                 "time_data_to_host,time_loop,energy_j,avg_power_w\n"
               << "cl_array_partition_npu,"
               << array_size_bytes * 2 << ","
               << array_size_bytes << ","
@@ -212,8 +284,17 @@ int main(int argc, char** argv) {
               << time_xpu / ns_per_s << ","
               << time_data_to_xpu_ocl / ns_per_s << ","
               << time_kernel_ocl / ns_per_s << ","
-              << time_data_to_host_ocl / ns_per_s
-              << "\n";
+              << time_data_to_host_ocl / ns_per_s << ","
+              << time_loop_s << ",";
+    // Left empty rather than zero when unavailable, so a missing measurement cannot
+    // be mistaken for a GPU that drew no power.
+    if (have_energy) {
+        double energy_j = (energy_end_mj - energy_start_mj) / 1000.0;
+        std::cout << energy_j << "," << (time_loop_s > 0.0 ? energy_j / time_loop_s : 0.0);
+    } else {
+        std::cout << ",";
+    }
+    std::cout << "\n";
 
     printf("TEST PASSED\n\n");
 

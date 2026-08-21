@@ -57,7 +57,9 @@ endif
 NVIDIA_CXX      := g++
 NVIDIA_CXXFLAGS := -std=c++14 -O2
 NVIDIA_INC      ?=
-NVIDIA_LIB      ?= -lOpenCL
+# nvml.h ships in /usr/include with the driver packages and in the CUDA toolkit's
+# include dir; set NVIDIA_INC=-I<cuda>/include if it is not on the default path.
+NVIDIA_LIB      ?= -lOpenCL -lnvidia-ml
 
 .PHONY: nvidia run_nvidia clean_nvidia
 
