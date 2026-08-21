@@ -61,9 +61,9 @@ void verify(vector<int>& gold, vector<int>& output) {
     }
 }
 
-// This example illustrates how to use array partitioning attributes in OpenCL
-// kernels for FPGA devices using matmul. On the GPU the partitioned variant is
-// replaced by a local-memory tiled one, see matmul_nvidia.cl.
+// Benchmarks the matmul kernel (C = A x B, int32, row major) so the same GEMM
+// can be measured on FPGA, GPU and NPU. The FPGA's array-partitioned variant is
+// replaced here by a local-memory tiled one, see matmul_nvidia.cl.
 int main(int argc, char** argv) {
     if (argc != 2) {
         std::cout << "Usage: " << argv[0] << " <matmul_nvidia.cl>" << std::endl;
@@ -82,33 +82,20 @@ int main(int argc, char** argv) {
 
     vector<int> A(columns * rows);
     vector<int> B(columns * rows);
-    vector<int> gold1(columns * rows, 0);
     vector<int> C(columns * rows, 0);
-    vector<int> D(columns * rows);
-    vector<int> E(columns * rows);
-    vector<int> F(columns * rows, 0);
-    vector<int> gold2(columns * rows, 0);
+    vector<int> gold(columns * rows, 0);
 
     generate(begin(A), end(A), gen_random);
     generate(begin(B), end(B), gen_random);
-    generate(begin(D), end(D), gen_random);
-    generate(begin(E), end(E), gen_random);
 
     printf("A:\n");
     print(A.data(), columns, rows);
     printf("B:\n");
     print(B.data(), columns, rows);
-    matmul(gold1.data(), A.data(), B.data(), columns);
+    matmul(gold.data(), A.data(), B.data(), columns);
 
-    printf("Gold1:\n");
-    print(gold1.data(), columns, rows);
-    std::cout << "D:\n";
-    print(D.data(), columns, rows);
-    std::cout << "E:\n";
-    print(E.data(), columns, rows);
-    matmul(gold2.data(), D.data(), E.data(), columns);
-    std::cout << "Gold2:\n";
-    print(gold2.data(), columns, rows);
+    printf("Gold:\n");
+    print(gold.data(), columns, rows);
 
     std::vector<cl::Platform> platforms;
     cl::Platform::get(&platforms);
@@ -151,15 +138,12 @@ int main(int argc, char** argv) {
     cl::Buffer buffer_a(context, CL_MEM_READ_ONLY, array_size_bytes);
     cl::Buffer buffer_b(context, CL_MEM_READ_ONLY, array_size_bytes);
     cl::Buffer buffer_c(context, CL_MEM_WRITE_ONLY, array_size_bytes);
-    cl::Buffer buffer_d(context, CL_MEM_READ_ONLY, array_size_bytes);
-    cl::Buffer buffer_e(context, CL_MEM_READ_ONLY, array_size_bytes);
-    cl::Buffer buffer_f(context, CL_MEM_WRITE_ONLY, array_size_bytes);
 
-    cl::Kernel matmul_kernel(program, "matmul");
-    matmul_kernel.setArg(0, buffer_a);
-    matmul_kernel.setArg(1, buffer_b);
-    matmul_kernel.setArg(2, buffer_c);
-    matmul_kernel.setArg(3, columns);
+    cl::Kernel matmul_partition_kernel(program, "matmul_partition");
+    matmul_partition_kernel.setArg(0, buffer_a);
+    matmul_partition_kernel.setArg(1, buffer_b);
+    matmul_partition_kernel.setArg(2, buffer_c);
+    matmul_partition_kernel.setArg(3, columns);
 
     cl::NDRange global(roundUp(rows, TILE_SIZE), roundUp(columns, TILE_SIZE));
     cl::NDRange local(TILE_SIZE, TILE_SIZE);
@@ -176,8 +160,8 @@ int main(int argc, char** argv) {
 
     q.finish();
 
-    // Running the naive matmul kernel for half of the reps
-    for (int iter = 0; iter < (n_warmup + n_reps) / 2; iter++) {
+    // Running the tiled matmul kernel
+    for (int iter = 0; iter < n_warmup + n_reps; iter++) {
         cl::Event ev_a, ev_b, ev_k, ev_r;
 
         auto t_xpu_0 = std::chrono::high_resolution_clock::now();
@@ -188,7 +172,7 @@ int main(int argc, char** argv) {
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
 
         auto t_xpu_2 = std::chrono::high_resolution_clock::now();
-        q.enqueueNDRangeKernel(matmul_kernel, cl::NullRange, global, local, nullptr, &ev_k);
+        q.enqueueNDRangeKernel(matmul_partition_kernel, cl::NullRange, global, local, nullptr, &ev_k);
         q.finish();
         auto t_xpu_3 = std::chrono::high_resolution_clock::now();
         time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
@@ -216,55 +200,7 @@ int main(int argc, char** argv) {
         time_data_to_host_ocl += e - s;
     }
 
-    verify(gold1, C);
-
-    cl::Kernel matmul_partition_kernel(program, "matmul_partition");
-    matmul_partition_kernel.setArg(0, buffer_d);
-    matmul_partition_kernel.setArg(1, buffer_e);
-    matmul_partition_kernel.setArg(2, buffer_f);
-    matmul_partition_kernel.setArg(3, columns);
-
-    // Running the tiled matmul kernel for the other half of the reps
-    for (int iter = 0; iter < (n_warmup + n_reps) / 2; iter++) {
-        cl::Event ev_a, ev_b, ev_k, ev_r;
-
-        auto t_xpu_0 = std::chrono::high_resolution_clock::now();
-        q.enqueueWriteBuffer(buffer_d, CL_FALSE, 0, array_size_bytes, D.data(), nullptr, &ev_a);
-        q.enqueueWriteBuffer(buffer_e, CL_FALSE, 0, array_size_bytes, E.data(), nullptr, &ev_b);
-        q.finish();
-        auto t_xpu_1 = std::chrono::high_resolution_clock::now();
-        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_1 - t_xpu_0).count();
-
-        auto t_xpu_2 = std::chrono::high_resolution_clock::now();
-        q.enqueueNDRangeKernel(matmul_partition_kernel, cl::NullRange, global, local, nullptr, &ev_k);
-        q.finish();
-        auto t_xpu_3 = std::chrono::high_resolution_clock::now();
-        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_3 - t_xpu_2).count();
-
-        auto t_xpu_4 = std::chrono::high_resolution_clock::now();
-        q.enqueueReadBuffer(buffer_f, CL_FALSE, 0, array_size_bytes, F.data(), nullptr, &ev_r);
-        q.finish();
-        auto t_xpu_5 = std::chrono::high_resolution_clock::now();
-        time_xpu += std::chrono::duration_cast<std::chrono::nanoseconds>(t_xpu_5 - t_xpu_4).count();
-
-        cl_ulong s, e;
-        ev_a.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
-        ev_a.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        time_data_to_xpu_ocl += e - s;
-        ev_b.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
-        ev_b.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        time_data_to_xpu_ocl += e - s;
-
-        ev_k.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
-        ev_k.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        time_kernel_ocl += e - s;
-
-        ev_r.getProfilingInfo(CL_PROFILING_COMMAND_START, &s);
-        ev_r.getProfilingInfo(CL_PROFILING_COMMAND_END,   &e);
-        time_data_to_host_ocl += e - s;
-    }
-
-    verify(gold2, F);
+    verify(gold, C);
 
     double ns_per_s = 1000000000;
     std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"

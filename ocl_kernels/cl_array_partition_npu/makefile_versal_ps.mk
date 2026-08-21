@@ -136,14 +136,11 @@ build: check-vitis check-device $(LINK_OUTPUT)
 xclbin: build
 
 ############################## Setting Rules for Binary Containers (Building Kernels) ##############################
-$(TEMP_DIR)/matmul.xo: src/matmul.cl
-	mkdir -p $(TEMP_DIR)
-	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k matmul --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 $(TEMP_DIR)/matmul_partition.xo: src/matmul.cl
 	mkdir -p $(TEMP_DIR)
 	v++ -c $(VPP_FLAGS) -t $(TARGET) --platform $(PLATFORM) -k matmul_partition --temp_dir $(TEMP_DIR)  -I'$(<D)' -o'$@' '$<'
 
-$(LINK_OUTPUT): $(TEMP_DIR)/matmul.xo $(TEMP_DIR)/matmul_partition.xo
+$(LINK_OUTPUT): $(TEMP_DIR)/matmul_partition.xo
 	mkdir -p $(BUILD_DIR)
 	v++ -l $(VPP_FLAGS) $(VPP_LDFLAGS) -t $(TARGET) --platform $(PLATFORM) --temp_dir $(TEMP_DIR) -o'$(LINK_OUTPUT)' $(+)
 ifeq ($(EMU_PS), X86)
