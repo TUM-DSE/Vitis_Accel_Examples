@@ -252,6 +252,14 @@ int main(int argc, char** argv) {
     std::string binaryFile = argv[1];
     static const int columns = 128;
     static const int rows = 128;
+    // The kernel moves VEC_IN int8 operands per 128-bit AXI beat (see matmul.cl),
+    // so a row has to be a whole number of beats.
+    static const int kernel_vec_in = 16;
+    if (columns % kernel_vec_in != 0) {
+        std::cout << "columns (" << columns << ") must be a multiple of " << kernel_vec_in
+                  << " for the vectorised kernel\n";
+        return EXIT_FAILURE;
+    }
     cl_int err;
     cl::Program program;
     cl::CommandQueue q;
