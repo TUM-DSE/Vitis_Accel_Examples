@@ -17,6 +17,8 @@ cl_shift_register/cl_shift_register
 cl_shift_register/cl_shift_register_nvidia
 cl_systolic_array/cl_systolic_array
 cl_systolic_array/cl_systolic_array_nvidia
+cl_systolic_array_power/cl_systolic_array_power
+cl_systolic_array_power/cl_systolic_array_power_nvidia
 cl_wide_mem_rw/cl_wide_mem_rw
 cl_wide_mem_rw/cl_wide_mem_rw_nvidia
 # Directories created by Intel compiler
