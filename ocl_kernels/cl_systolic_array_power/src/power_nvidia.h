@@ -11,8 +11,9 @@
 // Volta or newer; older GPUs answer NVML_ERROR_NOT_SUPPORTED.
 //
 // PowerMeter mirrors the XMC-backed type in power_fpga.h call for call
-// (open / measure_idle / start / finish + energy_j), so the host code around it
-// is identical on both platforms even though what happens underneath is not.
+// (open / measure_idle / start / finish / close + energy_j), so the host code
+// around it is identical on both platforms even though what happens underneath
+// is not.
 // ---------------------------------------------------------------------------
 
 #include <CL/cl.h>

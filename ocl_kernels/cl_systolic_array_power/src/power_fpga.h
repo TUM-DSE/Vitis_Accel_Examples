@@ -15,8 +15,9 @@
 // figure xbutil reports to the last digit:  12V PEX + 12V AUX + 3V3 PEX.
 //
 // PowerMeter mirrors the NVML-backed type in power_nvidia.h call for call
-// (open / measure_idle / start / finish + energy_j), so the host code around it
-// is identical on both platforms even though what happens underneath is not.
+// (open / measure_idle / start / finish / close + energy_j), so the host code
+// around it is identical on both platforms even though what happens underneath
+// is not.
 // ---------------------------------------------------------------------------
 
 #include <CL/cl.h>
@@ -185,6 +186,17 @@ struct PowerMeter {
             return false;
         }
         return true;
+    }
+
+    // Nothing to tear down: finish() already joined the sampling thread. Present
+    // only so the host code around PowerMeter reads the same on both platforms,
+    // where the NVML side really does have a library to shut down.
+    void close() {
+        if (th.joinable()) {
+            stop = true;
+            th.join();
+        }
+        active = false;
     }
 };
 
