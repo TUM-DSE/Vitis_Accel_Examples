@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
 
     // Idle baseline, taken in the same process state as the run that follows:
     // context and program built, buffers allocated, nothing enqueued.
-    const double idle_window_s = 10.0;
+    const double idle_window_s = 20.0;
     double idle_w = 0.0;
     bool have_idle = have_energy && power.measure_idle(idle_window_s, &idle_w);
     if (have_energy && !have_idle) {
