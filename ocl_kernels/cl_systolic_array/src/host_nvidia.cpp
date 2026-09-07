@@ -146,8 +146,13 @@ int main(int argc, char** argv) {
         time_data_to_host_ocl += e - s;
     }
 
+    // This example generates its input data in-process and reads no input file, so
+    // time_read_input is always zero here. The column is emitted anyway to keep one
+    // CSV schema across every benchmark.
+    uint64_t time_read_input = 0;
+
     double ns_per_s = 1000000000;
-    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host,time_read_input\n"
               << "cl_systolic_array,"
               << matrix_size_bytes * 2 << ","
               << matrix_size_bytes << ","
@@ -156,7 +161,8 @@ int main(int argc, char** argv) {
               << time_xpu / ns_per_s << ","
               << time_data_to_xpu_ocl / ns_per_s << ","
               << time_kernel_ocl / ns_per_s << ","
-              << time_data_to_host_ocl / ns_per_s
+              << time_data_to_host_ocl / ns_per_s << ","
+              << time_read_input / ns_per_s
               << "\n";
 
     m_softwareGold(in1, in2, sw_result);

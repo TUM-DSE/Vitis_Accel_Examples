@@ -14,6 +14,7 @@
 * under the License.
 */
 #include "bitmap.h"
+#include <chrono>
 #include "xcl2.hpp"
 #include <vector>
 
@@ -38,7 +39,11 @@ int main(int argc, char* argv[]) {
 
     // Read the input bit map file into memory
     BitmapInterface image(INPUT_BMP);
+    auto t_read_input_0 = std::chrono::high_resolution_clock::now();
     bool result = image.readBitmapFile();
+    auto t_read_input_1 = std::chrono::high_resolution_clock::now();
+    uint64_t time_read_input =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t_read_input_1 - t_read_input_0).count();
     if (!result) {
         std::cerr << "ERROR:Unable to Read Input Bitmap File " << INPUT_BMP << std::endl;
         return EXIT_FAILURE;
@@ -166,7 +171,7 @@ int main(int argc, char* argv[]) {
     // OPENCL HOST CODE AREA END
 
     double ns_per_s = 1000000000;
-    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host,time_read_input\n"
               << "cl_gmem_2banks,"
               << image_size_bytes << ","
               << image_size_bytes << ","
@@ -175,7 +180,8 @@ int main(int argc, char* argv[]) {
               << time_xpu / ns_per_s << ","
               << time_data_to_xpu_ocl / ns_per_s << ","
               << time_kernel_ocl / ns_per_s << ","
-              << time_data_to_host_ocl / ns_per_s
+              << time_data_to_host_ocl / ns_per_s << ","
+              << time_read_input / ns_per_s
               << "\n";
 
     // Compare Golden Image with Output image

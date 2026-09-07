@@ -35,15 +35,27 @@ int main(int argc, char** argv) {
     }
     std::string src((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 
-    // Same input image and expected-output image the FPGA flow uses, read with
-    // the same BitmapInterface helper.
+    // Same input image and expected-output image the FPGA flow uses, read with the same
+    // BitmapInterface helper. Both reads count towards time_read_input -- the golden
+    // image comes off disk exactly the way the input does.
+    uint64_t time_read_input = 0;
     BitmapInterface inputImage(INPUT_BMP);
-    if (!inputImage.readBitmapFile()) {
+    auto t_read_input_0 = std::chrono::high_resolution_clock::now();
+    bool input_ok = inputImage.readBitmapFile();
+    auto t_read_input_1 = std::chrono::high_resolution_clock::now();
+    time_read_input +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t_read_input_1 - t_read_input_0).count();
+    if (!input_ok) {
         std::cerr << "ERROR: Unable to read input bitmap file " << INPUT_BMP << std::endl;
         return EXIT_FAILURE;
     }
     BitmapInterface goldenImage(GOLDEN_BMP);
-    if (!goldenImage.readBitmapFile()) {
+    auto t_read_golden_0 = std::chrono::high_resolution_clock::now();
+    bool golden_ok = goldenImage.readBitmapFile();
+    auto t_read_golden_1 = std::chrono::high_resolution_clock::now();
+    time_read_input +=
+        std::chrono::duration_cast<std::chrono::nanoseconds>(t_read_golden_1 - t_read_golden_0).count();
+    if (!golden_ok) {
         std::cerr << "ERROR: Unable to read golden bitmap file " << GOLDEN_BMP << std::endl;
         return EXIT_FAILURE;
     }
@@ -157,7 +169,7 @@ int main(int argc, char** argv) {
     }
 
     double ns_per_s = 1000000000;
-    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host\n"
+    std::cout << "app_name,in_size,out_size,reps_warmup,reps,time_xpu,time_data_to_xpu,time_kernel,time_data_to_host,time_read_input\n"
               << "cl_gmem_2banks,"
               << image_size_bytes << ","
               << image_size_bytes << ","
@@ -166,7 +178,8 @@ int main(int argc, char** argv) {
               << time_xpu / ns_per_s << ","
               << time_data_to_xpu_ocl / ns_per_s << ","
               << time_kernel_ocl / ns_per_s << ","
-              << time_data_to_host_ocl / ns_per_s
+              << time_data_to_host_ocl / ns_per_s << ","
+              << time_read_input / ns_per_s
               << "\n";
 
     int match = 0;
