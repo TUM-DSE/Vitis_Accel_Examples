@@ -244,12 +244,29 @@ void verify(vector<int, aligned_allocator<int> >& gold, vector<int, aligned_allo
 // Benchmarks the array-partitioned matmul kernel (C = A x B, int32, row major)
 // so the same GEMM can be measured on FPGA, GPU and NPU.
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cout << "Usage: " << argv[0] << " <XCLBIN File>" << std::endl;
+    // Energy is measured only on request. Sampling it is not free: the idle
+    // baseline alone adds idle_window_s of doing nothing to every run, so a
+    // timing-only run should not pay for it.
+    bool measure_energy = false;
+    const char* binary_path = nullptr;
+    bool args_ok = true;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--energy" || arg == "-e") {
+            measure_energy = true;
+        } else if (binary_path == nullptr) {
+            binary_path = argv[i];
+        } else {
+            std::cout << "Unexpected argument: " << arg << std::endl;
+            args_ok = false;
+        }
+    }
+    if (!args_ok || binary_path == nullptr) {
+        std::cout << "Usage: " << argv[0] << " <XCLBIN File> [--energy|-e]" << std::endl;
         return EXIT_FAILURE;
     }
 
-    std::string binaryFile = argv[1];
+    std::string binaryFile = binary_path;
     static const int columns = 128;
     static const int rows = 128;
     // The kernel moves VEC_IN int8 operands per 128-bit AXI beat (see matmul.cl),
@@ -352,7 +369,7 @@ int main(int argc, char** argv) {
     uint64_t time_xpu = 0;
 
     PowerSampler power;
-    bool have_energy = power.open(selected_device);
+    bool have_energy = measure_energy && power.open(selected_device);
 
     // This is required for proper time measurements in Proteus. We add it here
     // as well to have the same host code for Proteus and native.

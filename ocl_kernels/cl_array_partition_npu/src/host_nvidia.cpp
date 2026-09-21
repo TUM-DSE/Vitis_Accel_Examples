@@ -114,14 +114,31 @@ void verify(vector<int>& gold, vector<int>& output, int columns) {
 // can be measured on FPGA, GPU and NPU. The FPGA's array-partitioned variant is
 // replaced here by a local-memory tiled one, see matmul_nvidia.cl.
 int main(int argc, char** argv) {
-    if (argc != 2) {
-        std::cout << "Usage: " << argv[0] << " <matmul_nvidia.cl>" << std::endl;
+    // Energy is measured only on request. Sampling it is not free: the idle
+    // baseline alone adds idle_window_s of doing nothing to every run, so a
+    // timing-only run should not pay for it.
+    bool measure_energy = false;
+    const char* kernel_path = nullptr;
+    bool args_ok = true;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--energy" || arg == "-e") {
+            measure_energy = true;
+        } else if (kernel_path == nullptr) {
+            kernel_path = argv[i];
+        } else {
+            std::cout << "Unexpected argument: " << arg << std::endl;
+            args_ok = false;
+        }
+    }
+    if (!args_ok || kernel_path == nullptr) {
+        std::cout << "Usage: " << argv[0] << " <matmul_nvidia.cl> [--energy|-e]" << std::endl;
         return EXIT_FAILURE;
     }
 
-    std::ifstream f(argv[1]);
+    std::ifstream f(kernel_path);
     if (!f) {
-        std::cerr << "Cannot open kernel: " << argv[1] << std::endl;
+        std::cerr << "Cannot open kernel: " << kernel_path << std::endl;
         return EXIT_FAILURE;
     }
     std::string src((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
@@ -212,7 +229,7 @@ int main(int argc, char** argv) {
     nvmlDevice_t nvml_dev{};
     unsigned long long energy_start_mj = 0;
     unsigned long long energy_end_mj = 0;
-    bool have_nvml = nvml_open(device, &nvml_dev);
+    bool have_nvml = measure_energy && nvml_open(device, &nvml_dev);
     unsigned long long probe_mj = 0;
     bool have_energy = have_nvml && nvml_energy_mj(nvml_dev, &probe_mj);
     if (have_nvml && !have_energy) {
