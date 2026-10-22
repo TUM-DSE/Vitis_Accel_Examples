@@ -52,10 +52,14 @@ kernel __attribute__((reqd_work_group_size(1, 1, 1))) void matmul_partition(
     // access: one bank per row of B, which is what block partitioning the
     // flattened MAX_DIM * MAX_DIM array by MAX_DIM gives. Each such row bank
     // would have to take all VEC_IN elements of a load beat at once, though, so
-    // B is kept two-dimensional here, block partitioned into its rows as before
-    // and each row additionally split cyclically into VEC_IN banks.
-    char B[MAX_DIM][MAX_DIM] __attribute__((xcl_array_partition(block, MAX_DIM, 1)))
-        __attribute__((xcl_array_partition(cyclic, VEC_IN, 2)));
+    // B is kept as rows of load beats instead, B[row][beat][lane], block
+    // partitioned into its rows as before and each row additionally split into
+    // its VEC_IN lanes. The lane is the 3rd index rather than part of a column
+    // index so that it is a compile-time constant in readB: with B[i][j + e]
+    // HLS cannot tell that (j + e) % VEC_IN == e, has to select among all
+    // MAX_DIM * VEC_IN banks at run time, and fails to pipeline the loop.
+    char B[MAX_DIM][MAX_DIM / VEC_IN][VEC_IN] __attribute__((xcl_array_partition(block, MAX_DIM, 1)))
+        __attribute__((xcl_array_partition(complete, 3)));
     // Cyclic Partition for C so the wide store can read VEC_OUT consecutive
     // results per cycle.
     int C[MAX_DIM * MAX_DIM] __attribute__((xcl_array_partition(cyclic, VEC_OUT, 1)));
@@ -80,14 +84,14 @@ kernel __attribute__((reqd_work_group_size(1, 1, 1))) void matmul_partition(
     // Burst read for matrix B, VEC_IN elements per beat
     __attribute__((xcl_pipeline_loop(1))) __attribute__((xcl_loop_tripcount(c_size * c_size / VEC_IN,
                                                                            c_size * c_size / VEC_IN))) readB
-        : for (int itr = 0, i = 0, j = 0; itr < (dim * dim) / VEC_IN; itr++, j += VEC_IN) {
-        if (j == dim) {
-            j = 0;
+        : for (int itr = 0, i = 0, jb = 0; itr < (dim * dim) / VEC_IN; itr++, jb++) {
+        if (jb == dim / VEC_IN) {
+            jb = 0;
             i++;
         }
         char lane[VEC_IN] __attribute__((xcl_array_partition(complete, 1)));
         vstore16(in2[itr], 0, lane);
-        __attribute__((opencl_unroll_hint(VEC_IN))) for (int e = 0; e < VEC_IN; e++) B[i][j + e] = lane[e];
+        __attribute__((opencl_unroll_hint(VEC_IN))) for (int e = 0; e < VEC_IN; e++) B[i][jb][e] = lane[e];
     }
 
     __attribute__((xcl_loop_tripcount(c_size, c_size))) lreorder1 : for (int i = 0; i < dim; i++) {
@@ -97,7 +101,7 @@ kernel __attribute__((reqd_work_group_size(1, 1, 1))) void matmul_partition(
             : for (int j = 0; j < dim; j++) {
             int result = 0;
             __attribute__((xcl_loop_tripcount(c_size, c_size))) lreorder3 : for (int k = 0; k < MAX_DIM; k++) {
-                result += (int)A[i * MAX_DIM + k] * (int)B[k][j];
+                result += (int)A[i * MAX_DIM + k] * (int)B[k][j / VEC_IN][j % VEC_IN];
             }
             C[i * MAX_DIM + j] = result;
         }
